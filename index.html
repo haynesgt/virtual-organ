@@ -1,0 +1,920 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Virtual Piano – Dual Oscillator Synth</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      background: #111;
+      color: #eee;
+      margin: 0;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 20px;
+    }
+
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .panel {
+      background: #181818;
+      border-radius: 8px;
+      padding: 12px;
+      flex: 1 1 360px;
+      box-shadow: 0 0 0 1px #333;
+    }
+
+    .panel h2 {
+      margin-top: 0;
+      font-size: 16px;
+      margin-bottom: 8px;
+    }
+
+    .section-title {
+      font-size: 13px;
+      margin: 8px 0 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #aaa;
+    }
+
+    .control-group {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px 8px;
+      align-items: center;
+      font-size: 13px;
+    }
+
+    label {
+      font-size: 12px;
+    }
+
+    input[type="range"] {
+      width: 100%;
+    }
+
+    select {
+      width: 100%;
+      background: #222;
+      color: #eee;
+      border-radius: 4px;
+      border: 1px solid #444;
+      padding: 2px 4px;
+      font-size: 12px;
+    }
+
+    .keyboard {
+      display: flex;
+      gap: 2px;
+      margin-top: 6px;
+      flex-wrap: wrap;
+    }
+
+    .key {
+      position: relative;
+      border-radius: 3px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      cursor: default;
+      user-select: none;
+      text-align: center;
+      padding-bottom: 4px;
+    }
+
+    .white-key {
+      width: 32px;
+      height: 90px;
+      background: #f5f5f5;
+      color: #000;
+      border: 1px solid #333;
+      z-index: 1;
+    }
+
+    .black-key {
+      width: 22px;
+      height: 70px;
+      background: #000;
+      color: #fff;
+      border: 1px solid #555;
+      margin: 0 -10px;
+      z-index: 2;
+    }
+
+    .key.active.white-key {
+      background: #ffd54f;
+    }
+
+    .key.active.black-key {
+      background: #ffb300;
+    }
+
+    .harmonics-container {
+      margin-top: 4px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      max-height: 140px;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+
+    .harmonic-row {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 4px 8px;
+      align-items: center;
+      font-size: 11px;
+    }
+
+    .small {
+      font-size: 11px;
+      color: #999;
+    }
+
+    .kbd-help {
+      font-size: 12px;
+      color: #ccc;
+      margin-bottom: 4px;
+    }
+
+    .key-label {
+      font-weight: 600;
+      margin-bottom: 2px;
+    }
+
+    .key-note {
+      font-size: 10px;
+      opacity: 0.8;
+    }
+  </style>
+</head>
+<body>
+  <h1>Virtual Piano – Dual Oscillator Synth</h1>
+  <div class="kbd-help">
+    <div>Keyboard 1: <b>Tab 1 Q 2 W 3 E 4 R 5 T 6 Y 7 U 8 I 9 O 0 P - [ = ] \</b></div>
+    <div>Keyboard 2: <b>Z S X D C F V G B H N J M K , L . ; /</b></div>
+    <div>
+      White keys are fixed: QWERTYUIOP[]\ and ZXCVBNM,./.
+      Roots are chosen from those whites. White rows follow Ionian; black keys show only non-scale accidentals (no duplicates of white notes).
+    </div>
+  </div>
+
+  <div class="row">
+    <!-- Instrument 1 -->
+    <div class="panel" id="panel1">
+      <h2>Keyboard 1 (Top row)</h2>
+
+      <div class="section-title">Oscillator & Envelope</div>
+      <div class="control-group">
+        <label for="waveform1">Waveform</label>
+        <select id="waveform1">
+          <option value="sine">Sine</option>
+          <option value="square">Square</option>
+          <option value="sawtooth">Sawtooth</option>
+          <option value="triangle">Triangle</option>
+        </select>
+
+        <label for="attack1">Attack (s)</label>
+        <input id="attack1" type="range" min="0" max="1.5" step="0.01" value="0.1" />
+
+        <label for="decay1">Decay (s)</label>
+        <input id="decay1" type="range" min="0" max="1.5" step="0.01" value="0.1" />
+
+        <label for="sustain1">Sustain (0–1)</label>
+        <input id="sustain1" type="range" min="0" max="1" step="0.01" value="0.7" />
+
+        <label for="release1">Release (s)</label>
+        <input id="release1" type="range" min="0" max="2.5" step="0.01" value="0.4" />
+      </div>
+
+      <div class="section-title">Root, Transpose & Volume</div>
+      <div class="control-group">
+        <label for="rootKey1">Root key (Ionian)</label>
+        <select id="rootKey1"></select>
+
+        <label for="transpose1">Transpose (semitones)</label>
+        <input id="transpose1" type="range" min="-48" max="48" step="1" value="0" />
+
+        <label for="volume1">Volume</label>
+        <input id="volume1" type="range" min="0" max="1" step="0.01" value="0.3" />
+      </div>
+
+      <div class="section-title">Harmonics</div>
+      <div class="control-group">
+        <label for="numHarmonics1">Number of harmonics</label>
+        <input id="numHarmonics1" type="range" min="1" max="8" step="1" value="3" />
+      </div>
+      <div id="harmonics1" class="harmonics-container"></div>
+      <div class="small">Harmonic 1 is the fundamental, higher numbers are overtones.</div>
+
+      <div class="section-title">Fricative (Noise)</div>
+      <div class="control-group">
+        <label for="noise1">Noise mix</label>
+        <input id="noise1" type="range" min="0" max="1" step="0.01" value="0.05" />
+
+        <label for="noisePitch1">Noise pitch (cutoff)</label>
+        <input id="noisePitch1" type="range" min="100" max="8000" step="10" value="800" />
+      </div>
+
+      <div class="section-title">Reverb</div>
+      <div class="control-group">
+        <label for="reverbTime1">Length (s)</label>
+        <input id="reverbTime1" type="range" min="0.1" max="5" step="0.1" value="2" />
+
+        <label for="reverbWet1">Wet mix</label>
+        <input id="reverbWet1" type="range" min="0" max="1" step="0.01" value="0.3" />
+      </div>
+
+      <div class="section-title">Keys</div>
+      <div class="keyboard" id="visualKbd1">
+        <div class="key" data-key="tab" data-label="Tab"></div>
+        <div class="key" data-key="1" data-label="1"></div>
+        <div class="key" data-key="q" data-label="Q"></div>
+        <div class="key" data-key="2" data-label="2"></div>
+        <div class="key" data-key="w" data-label="W"></div>
+        <div class="key" data-key="3" data-label="3"></div>
+        <div class="key" data-key="e" data-label="E"></div>
+        <div class="key" data-key="4" data-label="4"></div>
+        <div class="key" data-key="r" data-label="R"></div>
+        <div class="key" data-key="5" data-label="5"></div>
+        <div class="key" data-key="t" data-label="T"></div>
+        <div class="key" data-key="6" data-label="6"></div>
+        <div class="key" data-key="y" data-label="Y"></div>
+        <div class="key" data-key="7" data-label="7"></div>
+        <div class="key" data-key="u" data-label="U"></div>
+        <div class="key" data-key="8" data-label="8"></div>
+        <div class="key" data-key="i" data-label="I"></div>
+        <div class="key" data-key="9" data-label="9"></div>
+        <div class="key" data-key="o" data-label="O"></div>
+        <div class="key" data-key="0" data-label="0"></div>
+        <div class="key" data-key="p" data-label="P"></div>
+        <div class="key" data-key="-" data-label="-"></div>
+        <div class="key" data-key="[" data-label="["></div>
+        <div class="key" data-key="=" data-label="="></div>
+        <div class="key" data-key="]" data-label="]"></div>
+        <div class="key" data-key="\\" data-label="\\"></div>
+      </div>
+    </div>
+
+    <!-- Instrument 2 -->
+    <div class="panel" id="panel2">
+      <h2>Keyboard 2 (Bottom row)</h2>
+
+      <div class="section-title">Oscillator & Envelope</div>
+      <div class="control-group">
+        <label for="waveform2">Waveform</label>
+        <select id="waveform2">
+          <option value="sine" selected>Sine</option>
+          <option value="square">Square</option>
+          <option value="sawtooth">Sawtooth</option>
+          <option value="triangle">Triangle</option>
+        </select>
+
+        <label for="attack2">Attack (s)</label>
+        <input id="attack2" type="range" min="0" max="10" step="0.01" value="5" />
+
+        <label for="decay2">Decay (s)</label>
+        <input id="decay2" type="range" min="0" max="15" step="0.01" value="10" />
+
+        <label for="sustain2">Sustain (0–1)</label>
+        <input id="sustain2" type="range" min="0" max="1" step="0.01" value="0.7" />
+
+        <label for="release2">Release (s)</label>
+        <input id="release2" type="range" min="0" max="2.5" step="0.01" value="0.4" />
+      </div>
+
+      <div class="section-title">Root, Transpose & Volume</div>
+      <div class="control-group">
+        <label for="rootKey2">Root key (Ionian)</label>
+        <select id="rootKey2"></select>
+
+        <label for="transpose2">Transpose (semitones)</label>
+        <input id="transpose2" type="range" min="-48" max="48" step="1" value="0" />
+
+        <label for="volume2">Volume</label>
+        <input id="volume2" type="range" min="0" max="1" step="0.01" value="0.3" />
+      </div>
+
+      <div class="section-title">Harmonics</div>
+      <div class="control-group">
+        <label for="numHarmonics2">Number of harmonics</label>
+        <input id="numHarmonics2" type="range" min="1" max="8" step="1" value="5" />
+      </div>
+      <div id="harmonics2" class="harmonics-container"></div>
+      <div class="small">Shape this differently from Keyboard 1 for layering.</div>
+
+      <div class="section-title">Fricative (Noise)</div>
+      <div class="control-group">
+        <label for="noise2">Noise mix</label>
+        <input id="noise2" type="range" min="0" max="1" step="0.01" value="0.1" />
+
+        <label for="noisePitch2">Noise pitch (cutoff)</label>
+        <input id="noisePitch2" type="range" min="100" max="8000" step="10" value="400" />
+      </div>
+
+      <div class="section-title">Reverb</div>
+      <div class="control-group">
+        <label for="reverbTime2">Length (s)</label>
+        <input id="reverbTime2" type="range" min="0.1" max="5" step="0.1" value="2.5" />
+
+        <label for="reverbWet2">Wet mix</label>
+        <input id="reverbWet2" type="range" min="0" max="1" step="0.01" value="0.4" />
+      </div>
+
+      <div class="section-title">Keys</div>
+      <div class="keyboard" id="visualKbd2">
+        <div class="key" data-key="z" data-label="Z"></div>
+        <div class="key" data-key="s" data-label="S"></div>
+        <div class="key" data-key="x" data-label="X"></div>
+        <div class="key" data-key="d" data-label="D"></div>
+        <div class="key" data-key="c" data-label="C"></div>
+        <div class="key" data-key="f" data-label="F"></div>
+        <div class="key" data-key="v" data-label="V"></div>
+        <div class="key" data-key="g" data-label="G"></div>
+        <div class="key" data-key="b" data-label="B"></div>
+        <div class="key" data-key="h" data-label="H"></div>
+        <div class="key" data-key="n" data-label="N"></div>
+        <div class="key" data-key="j" data-label="J"></div>
+        <div class="key" data-key="m" data-label="M"></div>
+        <div class="key" data-key="k" data-label="K"></div>
+        <div class="key" data-key="," data-label=","></div>
+        <div class="key" data-key="l" data-label="L"></div>
+        <div class="key" data-key="." data-label="."></div>
+        <div class="key" data-key=";" data-label=";"></div>
+        <div class="key" data-key="/" data-label="/"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    const audioCtx = new AudioContextClass();
+
+    // Ionian intervals (for white-key scale steps)
+    const IONIAN_INTERVALS = [2, 2, 1, 2, 2, 2, 1];
+    const IONIAN_SET = new Set([0, 2, 4, 5, 7, 9, 11]); // scale degrees from root
+
+    function ionianOffset(steps) {
+      if (steps === 0) return 0;
+      let semis = 0;
+      if (steps > 0) {
+        for (let i = 0; i < steps; i++) {
+          semis += IONIAN_INTERVALS[i % IONIAN_INTERVALS.length];
+        }
+      } else {
+        const count = -steps;
+        for (let i = 0; i < count; i++) {
+          const idx = IONIAN_INTERVALS.length - 1 - (i % IONIAN_INTERVALS.length);
+          semis -= IONIAN_INTERVALS[idx];
+        }
+      }
+      return semis;
+    }
+
+    function midiToFreq(m) {
+      return 440 * Math.pow(2, (m - 69) / 12);
+    }
+
+    function midiToName(m) {
+      const names = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+      const n = ((m % 12) + 12) % 12;
+      const octave = Math.floor(m / 12) - 1;
+      return names[n] + octave;
+    }
+
+    // Physical sequences
+    const board1Seq = [
+      'tab','1','q','2','w','3','e','4','r','5',
+      't','6','y','7','u','8','i','9','o','0',
+      'p','-','[','=',' ]','\\'
+    ];
+
+    const board2Seq = [
+      'z','s','x','d','c','f','v','g','b','h',
+      'n','j','m','k',',','l','.',';','/'
+    ];
+
+    // White keys (fixed "piano whites")
+    const whiteKeys1 = ['q','w','e','r','t','y','u','i','o','p','[',']','\\'];
+    const whiteKeys2 = ['z','x','c','v','b','n','m',',','.','/'];
+    const whiteSet1 = new Set(whiteKeys1);
+    const whiteSet2 = new Set(whiteKeys2);
+
+    // key -> midi per instrument
+    const keyMidi = {}; // `${instr}:${key}` -> midi
+
+    function createReverbImpulse(seconds, decay) {
+      const rate = audioCtx.sampleRate;
+      const length = Math.max(1, Math.floor(seconds * rate));
+      const impulse = audioCtx.createBuffer(2, length, rate);
+      for (let ch = 0; ch < impulse.numberOfChannels; ch++) {
+        const channelData = impulse.getChannelData(ch);
+        for (let i = 0; i < length; i++) {
+          const t = i / length;
+          channelData[i] = (Math.random() * 2 - 1) * Math.pow(1 - t, decay);
+        }
+      }
+      return impulse;
+    }
+
+    function createInstrument(config) {
+      const output = audioCtx.createGain();
+      output.gain.value = config.volume;
+      output.connect(audioCtx.destination);
+
+      const reverbConvolver = audioCtx.createConvolver();
+      reverbConvolver.buffer = createReverbImpulse(config.reverbTime, 2.5);
+
+      const reverbWet = audioCtx.createGain();
+      const reverbDry = audioCtx.createGain();
+      reverbWet.gain.value = config.reverbWet;
+      reverbDry.gain.value = 1 - config.reverbWet;
+
+      const reverbInput = audioCtx.createGain();
+
+      reverbInput.connect(reverbDry);
+      reverbInput.connect(reverbConvolver);
+      reverbConvolver.connect(reverbWet);
+
+      reverbDry.connect(output);
+      reverbWet.connect(output);
+
+      config._reverbConvolver = reverbConvolver;
+      config._reverbInput = reverbInput;
+      config._reverbWetNode = reverbWet;
+      config._reverbDryNode = reverbDry;
+
+      const activeVoices = new Map();
+
+      function startNote(keyId, frequency) {
+        if (activeVoices.has(keyId)) return;
+
+        const now = audioCtx.currentTime;
+        const voiceOutput = audioCtx.createGain();
+        voiceOutput.gain.value = 0;
+
+        const oscGain = audioCtx.createGain();
+        oscGain.gain.value = 1;
+
+        const baseOscs = [];
+        const numHarm = config.numHarmonics;
+        const harmonicGains = config.harmonics;
+
+        for (let i = 0; i < numHarm; i++) {
+          const harmonicIndex = i + 1;
+          const osc = audioCtx.createOscillator();
+          osc.type = config.waveform;
+          osc.frequency.value = frequency * harmonicIndex;
+          const g = audioCtx.createGain();
+          const gainVal = harmonicGains[i] ?? 0;
+          g.gain.value = gainVal;
+          osc.connect(g);
+          g.connect(oscGain);
+          osc.start(now);
+          baseOscs.push({ osc, gain: g });
+        }
+
+        // Brown-ish noise via lowpass
+        const noiseBuffer = audioCtx.createBuffer(1, audioCtx.sampleRate * 2, audioCtx.sampleRate);
+        const noiseData = noiseBuffer.getChannelData(0);
+        for (let i = 0; i < noiseData.length; i++) {
+          noiseData[i] = Math.random() * 2 - 1;
+        }
+        const noiseSource = audioCtx.createBufferSource();
+        noiseSource.buffer = noiseBuffer;
+        noiseSource.loop = true;
+
+        const noiseFilter = audioCtx.createBiquadFilter();
+        noiseFilter.type = 'lowpass';
+        noiseFilter.frequency.value = config.noiseCutoff || 800;
+
+        const noiseGain = audioCtx.createGain();
+        noiseGain.gain.value = config.noise;
+
+        noiseSource.connect(noiseFilter);
+        noiseFilter.connect(noiseGain);
+        noiseGain.connect(voiceOutput);
+        noiseSource.start(now);
+
+        oscGain.connect(voiceOutput);
+        voiceOutput.connect(config._reverbInput);
+
+        const { attack, decay, sustain } = config;
+        const env = voiceOutput.gain;
+        env.cancelScheduledValues(now);
+        env.setValueAtTime(0, now);
+        env.linearRampToValueAtTime(1, now + attack);
+        env.linearRampToValueAtTime(sustain, now + attack + decay);
+
+        activeVoices.set(keyId, {
+          baseOscs,
+          noiseSource,
+          voiceOutput
+        });
+      }
+
+      function stopNote(keyId) {
+        const voice = activeVoices.get(keyId);
+        if (!voice) return;
+        const now = audioCtx.currentTime;
+        const { release } = config;
+        const env = voice.voiceOutput.gain;
+        env.cancelScheduledValues(now);
+        const current = env.value;
+        env.setValueAtTime(current, now);
+        env.linearRampToValueAtTime(0, now + release);
+        const stopTime = now + release + 0.05;
+
+        voice.baseOscs.forEach(({ osc }) => osc.stop(stopTime));
+        voice.noiseSource.stop(stopTime);
+
+        setTimeout(() => {
+          voice.voiceOutput.disconnect();
+        }, (release + 0.1) * 1000);
+
+        activeVoices.delete(keyId);
+      }
+
+      function updateReverb() {
+        const newBuffer = createReverbImpulse(config.reverbTime, 2.5);
+        config._reverbConvolver.buffer = newBuffer;
+        config._reverbWetNode.gain.value = config.reverbWet;
+        config._reverbDryNode.gain.value = 1 - config.reverbWet;
+      }
+
+      function setVolume(v) {
+        config.volume = v;
+        output.gain.value = v;
+      }
+
+      return {
+        startNote,
+        stopNote,
+        updateReverb,
+        setVolume
+      };
+    }
+
+    const instr1Config = {
+      waveform: 'sine',
+      attack: 0.1,
+      decay: 0.1,
+      sustain: 0.7,
+      release: 0.4,
+      numHarmonics: 3,
+      harmonics: [1, 0.4, 0.2, 0, 0, 0, 0, 0],
+      noise: 0.05,
+      noiseCutoff: 800,
+      reverbTime: 2,
+      reverbWet: 0.3,
+      transpose: 0,
+      volume: 0.3,
+      rootMidiBase: 60,   // C4 when root key is rootKey1
+      rootKey: 'q'
+    };
+
+    const instr2Config = {
+      waveform: 'sine',
+      attack: 5,
+      decay: 10,
+      sustain: 0.7,
+      release: 0.4,
+      numHarmonics: 5,
+      harmonics: [1, 0.7, 0.2, 0.3, 0.2, 0, 0, 0], // H3 = 0.2
+      noise: 0.1,
+      noiseCutoff: 400,
+      reverbTime: 2.5,
+      reverbWet: 0.4,
+      transpose: 0,
+      volume: 0.3,
+      rootMidiBase: 48,   // C3 when root key is rootKey2
+      rootKey: 'z'
+    };
+
+    const instrument1 = createInstrument(instr1Config);
+    const instrument2 = createInstrument(instr2Config);
+
+    function buildHarmonicSliders(container, config) {
+      container.innerHTML = '';
+      for (let i = 0; i < config.numHarmonics; i++) {
+        const row = document.createElement('div');
+        row.className = 'harmonic-row';
+
+        const label = document.createElement('div');
+        label.textContent = `H${i + 1}`;
+        row.appendChild(label);
+
+        const slider = document.createElement('input');
+        slider.type = 'range';
+        slider.min = '0';
+        slider.max = '1';
+        slider.step = '0.01';
+        slider.value = config.harmonics[i] ?? 0;
+        slider.addEventListener('input', () => {
+          config.harmonics[i] = parseFloat(slider.value);
+        });
+        row.appendChild(slider);
+
+        container.appendChild(row);
+      }
+    }
+
+    buildHarmonicSliders(document.getElementById('harmonics1'), instr1Config);
+    buildHarmonicSliders(document.getElementById('harmonics2'), instr2Config);
+
+    // Populate root key selects with white keys only
+    function populateRootSelect(selectEl, whiteKeys, defaultKey) {
+      whiteKeys.forEach(k => {
+        const opt = document.createElement('option');
+        opt.value = k;
+        opt.textContent = k.toUpperCase();
+        if (k === defaultKey) opt.selected = true;
+        selectEl.appendChild(opt);
+      });
+    }
+
+    populateRootSelect(document.getElementById('rootKey1'), whiteKeys1, instr1Config.rootKey);
+    populateRootSelect(document.getElementById('rootKey2'), whiteKeys2, instr2Config.rootKey);
+
+    // Recompute pitches & labels for a board
+    function updateBoardVisuals(boardSeq, whiteKeys, whiteSet, config, instrNum) {
+      const rootIdx = whiteKeys.indexOf(config.rootKey);
+      const rootMidi = config.rootMidiBase + config.transpose;
+
+      // Ionian offsets for white keys
+      const whiteOffsets = {};
+      whiteKeys.forEach((k, idx) => {
+        whiteOffsets[k] = ionianOffset(idx - rootIdx);
+      });
+
+      boardSeq.forEach((key, idx) => {
+        let offset;
+        if (whiteSet.has(key)) {
+          offset = whiteOffsets[key];
+        } else {
+          // black-ish key: place it chromatically between nearest whites
+          let leftSem = null, rightSem = null;
+          for (let j = idx - 1; j >= 0; j--) {
+            const k2 = boardSeq[j];
+            if (whiteSet.has(k2)) {
+              leftSem = whiteOffsets[k2];
+              break;
+            }
+          }
+          for (let j = idx + 1; j < boardSeq.length; j++) {
+            const k2 = boardSeq[j];
+            if (whiteSet.has(k2)) {
+              rightSem = whiteOffsets[k2];
+              break;
+            }
+          }
+
+          if (leftSem === null && rightSem === null) {
+            offset = 0;
+          } else if (rightSem === null) {
+            offset = leftSem + 1;
+          } else if (leftSem === null) {
+            offset = rightSem - 1;
+          } else {
+            if (rightSem - leftSem >= 2) {
+              offset = leftSem + 1; // true chromatic between
+            } else {
+              offset = leftSem + 1; // cluster if no gap
+            }
+          }
+        }
+
+        const midi = rootMidi + offset;
+        keyMidi[`${instrNum}:${key}`] = midi;
+        const noteName = midiToName(midi);
+
+        const semitoneFromRoot = ((midi - rootMidi) % 12 + 12) % 12;
+        const isScaleNote = IONIAN_SET.has(semitoneFromRoot);
+
+        document.querySelectorAll(`.key[data-key="${key}"]`).forEach(el => {
+          el.classList.remove('white-key', 'black-key');
+          el.classList.add(whiteSet.has(key) ? 'white-key' : 'black-key');
+          const label = el.dataset.label || key.toUpperCase();
+          el.innerHTML = `<div class="key-label">${label}</div><div class="key-note">${noteName}</div>`;
+
+          // For black keys: hide duplicates of scale (only show non-scale accidentals)
+          if (!whiteSet.has(key) && isScaleNote) {
+            el.style.visibility = 'hidden';
+            el.style.pointerEvents = 'none';
+          } else {
+            el.style.visibility = 'visible';
+            el.style.pointerEvents = 'auto';
+          }
+        });
+      });
+    }
+
+    function updateKeyVisuals() {
+      updateBoardVisuals(board1Seq, whiteKeys1, whiteSet1, instr1Config, 1);
+      updateBoardVisuals(board2Seq, whiteKeys2, whiteSet2, instr2Config, 2);
+    }
+
+    // Controls for instrument 1
+    document.getElementById('waveform1').addEventListener('change', e => {
+      instr1Config.waveform = e.target.value;
+    });
+    document.getElementById('attack1').addEventListener('input', e => {
+      instr1Config.attack = parseFloat(e.target.value);
+    });
+    document.getElementById('decay1').addEventListener('input', e => {
+      instr1Config.decay = parseFloat(e.target.value);
+    });
+    document.getElementById('sustain1').addEventListener('input', e => {
+      instr1Config.sustain = parseFloat(e.target.value);
+    });
+    document.getElementById('release1').addEventListener('input', e => {
+      instr1Config.release = parseFloat(e.target.value);
+    });
+    document.getElementById('numHarmonics1').addEventListener('input', e => {
+      instr1Config.numHarmonics = parseInt(e.target.value, 10);
+      buildHarmonicSliders(document.getElementById('harmonics1'), instr1Config);
+    });
+    document.getElementById('noise1').addEventListener('input', e => {
+      instr1Config.noise = parseFloat(e.target.value);
+    });
+    document.getElementById('noisePitch1').addEventListener('input', e => {
+      instr1Config.noiseCutoff = parseFloat(e.target.value);
+    });
+    document.getElementById('reverbTime1').addEventListener('input', e => {
+      instr1Config.reverbTime = parseFloat(e.target.value);
+      instrument1.updateReverb();
+    });
+    document.getElementById('reverbWet1').addEventListener('input', e => {
+      instr1Config.reverbWet = parseFloat(e.target.value);
+      instrument1.updateReverb();
+    });
+    document.getElementById('transpose1').addEventListener('input', e => {
+      instr1Config.transpose = parseInt(e.target.value, 10);
+      updateKeyVisuals();
+    });
+    document.getElementById('volume1').addEventListener('input', e => {
+      instrument1.setVolume(parseFloat(e.target.value));
+    });
+    document.getElementById('rootKey1').addEventListener('change', e => {
+      instr1Config.rootKey = e.target.value;
+      updateKeyVisuals();
+    });
+
+    // Controls for instrument 2
+    document.getElementById('waveform2').addEventListener('change', e => {
+      instr2Config.waveform = e.target.value;
+    });
+    document.getElementById('attack2').addEventListener('input', e => {
+      instr2Config.attack = parseFloat(e.target.value);
+    });
+    document.getElementById('decay2').addEventListener('input', e => {
+      instr2Config.decay = parseFloat(e.target.value);
+    });
+    document.getElementById('sustain2').addEventListener('input', e => {
+      instr2Config.sustain = parseFloat(e.target.value);
+    });
+    document.getElementById('release2').addEventListener('input', e => {
+      instr2Config.release = parseFloat(e.target.value);
+    });
+    document.getElementById('numHarmonics2').addEventListener('input', e => {
+      instr2Config.numHarmonics = parseInt(e.target.value, 10);
+      buildHarmonicSliders(document.getElementById('harmonics2'), instr2Config);
+    });
+    document.getElementById('noise2').addEventListener('input', e => {
+      instr2Config.noise = parseFloat(e.target.value);
+    });
+    document.getElementById('noisePitch2').addEventListener('input', e => {
+      instr2Config.noiseCutoff = parseFloat(e.target.value);
+    });
+    document.getElementById('reverbTime2').addEventListener('input', e => {
+      instr2Config.reverbTime = parseFloat(e.target.value);
+      instrument2.updateReverb();
+    });
+    document.getElementById('reverbWet2').addEventListener('input', e => {
+      instr2Config.reverbWet = parseFloat(e.target.value);
+      instrument2.updateReverb();
+    });
+    document.getElementById('transpose2').addEventListener('input', e => {
+      instr2Config.transpose = parseInt(e.target.value, 10);
+      updateKeyVisuals();
+    });
+    document.getElementById('volume2').addEventListener('input', e => {
+      instrument2.setVolume(parseFloat(e.target.value));
+    });
+    document.getElementById('rootKey2').addEventListener('change', e => {
+      instr2Config.rootKey = e.target.value;
+      updateKeyVisuals();
+    });
+
+    // Map from physical key to instrument
+    const keyMap = {};
+    board1Seq.forEach(k => { keyMap[k] = { instr: 1 }; });
+    board2Seq.forEach(k => { keyMap[k] = { instr: 2 }; });
+
+    function getFrequencyForKey(instrNum, key) {
+      const midi = keyMidi[`${instrNum}:${key}`];
+      return midiToFreq(midi);
+    }
+
+    const downKeys = new Set();
+
+    function setVisualKeyActive(key, active) {
+      document.querySelectorAll(`.key[data-key="${key}"]`).forEach(el => {
+        el.classList.toggle('active', active);
+      });
+    }
+
+    window.addEventListener('keydown', e => {
+      let key = e.key;
+      if (key === 'Tab') {
+        e.preventDefault();
+        key = 'tab';
+      } else {
+        key = key.toLowerCase();
+      }
+
+      const mapping = keyMap[key];
+      if (!mapping) return;
+      if (e.repeat) return;
+
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+
+      const freq = getFrequencyForKey(mapping.instr, key);
+      const instr = mapping.instr === 1 ? instrument1 : instrument2;
+      const voiceId = `${mapping.instr}:${key}`;
+      downKeys.add(voiceId);
+      instr.startNote(voiceId, freq);
+      setVisualKeyActive(key, true);
+    });
+
+    window.addEventListener('keyup', e => {
+      let key = e.key === 'Tab' ? 'tab' : e.key.toLowerCase();
+      const mapping = keyMap[key];
+      if (!mapping) return;
+
+      const voiceId = `${mapping.instr}:${key}`;
+      if (!downKeys.has(voiceId)) return;
+      const instr = mapping.instr === 1 ? instrument1 : instrument2;
+      instr.stopNote(voiceId);
+      downKeys.delete(voiceId);
+      setVisualKeyActive(key, false);
+    });
+
+    // Mouse support
+    document.querySelectorAll('.key').forEach(el => {
+      el.addEventListener('mousedown', () => {
+        const key = el.dataset.key;
+        const mapping = keyMap[key];
+        if (!mapping) return;
+
+        if (audioCtx.state === 'suspended') {
+          audioCtx.resume();
+        }
+
+        const freq = getFrequencyForKey(mapping.instr, key);
+        const instr = mapping.instr === 1 ? instrument1 : instrument2;
+        const voiceId = `${mapping.instr}:${key}`;
+        if (!downKeys.has(voiceId)) {
+          downKeys.add(voiceId);
+          instr.startNote(voiceId, freq);
+          setVisualKeyActive(key, true);
+        }
+      });
+
+      const stopForEl = () => {
+        const key = el.dataset.key;
+        const mapping = keyMap[key];
+        if (!mapping) return;
+        const voiceId = `${mapping.instr}:${key}`;
+        if (!downKeys.has(voiceId)) return;
+        const instr = mapping.instr === 1 ? instrument1 : instrument2;
+        instr.stopNote(voiceId);
+        downKeys.delete(voiceId);
+        setVisualKeyActive(key, false);
+      };
+
+      el.addEventListener('mouseup', stopForEl);
+      el.addEventListener('mouseleave', stopForEl);
+    });
+
+    // Initial mapping and labels
+    updateKeyVisuals();
+  </script>
+</body>
+</html>
