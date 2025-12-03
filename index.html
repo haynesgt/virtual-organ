@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Virtual Piano – Dual Oscillator Synth</title>
+  <title>Virtual Piano – Dual Oscillator Synth + MIDI</title>
   <style>
     body {
       font-family: system-ui, sans-serif;
@@ -163,7 +163,7 @@
   </style>
 </head>
 <body>
-  <h1>Virtual Piano – Dual Oscillator Synth</h1>
+  <h1>Virtual Piano – Dual Oscillator Synth + MIDI</h1>
   <div class="kbd-help">
     <div>Keyboard 1: <b>Tab 1 Q 2 W 3 E 4 R 5 T 6 Y 7 U 8 I 9 O 0 P - [ = ] \</b></div>
     <div>Keyboard 2: <b>Z S X D C F V G B H N J M K , L . ; /</b></div>
@@ -206,8 +206,11 @@
         <label for="rootKey1">Root key (Ionian)</label>
         <select id="rootKey1"></select>
 
-        <label for="transpose1">Transpose (semitones)</label>
-        <input id="transpose1" type="range" min="-48" max="48" step="1" value="0" />
+        <label for="transposeNote1">Root note</label>
+        <select id="transposeNote1"></select>
+
+        <label for="transposeOctave1">Octave</label>
+        <select id="transposeOctave1"></select>
 
         <label for="volume1">Volume</label>
         <input id="volume1" type="range" min="0" max="1" step="0.01" value="0.3" />
@@ -266,7 +269,8 @@
         <div class="key" data-key="[" data-label="["></div>
         <div class="key" data-key="=" data-label="="></div>
         <div class="key" data-key="]" data-label="]"></div>
-        <div class="key" data-key="\\" data-label="\\"></div>
+        <div class="key" data-key="backspace" data-label="Backspace"></div>
+        <div class="key" data-key="\" data-label="\"></div>
       </div>
     </div>
 
@@ -302,8 +306,11 @@
         <label for="rootKey2">Root key (Ionian)</label>
         <select id="rootKey2"></select>
 
-        <label for="transpose2">Transpose (semitones)</label>
-        <input id="transpose2" type="range" min="-48" max="48" step="1" value="0" />
+        <label for="transposeNote2">Root note</label>
+        <select id="transposeNote2"></select>
+
+        <label for="transposeOctave2">Octave</label>
+        <select id="transposeOctave2"></select>
 
         <label for="volume2">Volume</label>
         <input id="volume2" type="range" min="0" max="1" step="0.01" value="0.3" />
@@ -358,6 +365,75 @@
         <div class="key" data-key="/" data-label="/"></div>
       </div>
     </div>
+
+    <!-- Instrument 3 (MIDI) -->
+    <div class="panel" id="panel3">
+      <h2>Keyboard 3 (MIDI controller)</h2>
+
+      <div class="section-title">MIDI Input</div>
+      <div class="control-group">
+        <label for="midiInputSelect3">MIDI device</label>
+        <select id="midiInputSelect3"></select>
+
+        <label for="midiChannel3">Channel</label>
+        <select id="midiChannel3"></select>
+      </div>
+      <div id="midiStatus3" class="small">Looking for MIDI devices…</div>
+
+      <div class="section-title">Oscillator & Envelope</div>
+      <div class="control-group">
+        <label for="waveform3">Waveform</label>
+        <select id="waveform3">
+          <option value="sine" selected>Sine</option>
+          <option value="square">Square</option>
+          <option value="sawtooth">Sawtooth</option>
+          <option value="triangle">Triangle</option>
+        </select>
+
+        <label for="attack3">Attack (s)</label>
+        <input id="attack3" type="range" min="0" max="2" step="0.01" value="0.03" />
+
+        <label for="decay3">Decay (s)</label>
+        <input id="decay3" type="range" min="0" max="2" step="0.01" value="0.2" />
+
+        <label for="sustain3">Sustain (0–1)</label>
+        <input id="sustain3" type="range" min="0" max="1" step="0.01" value="0.9" />
+
+        <label for="release3">Release (s)</label>
+        <input id="release3" type="range" min="0" max="4" step="0.01" value="0.5" />
+
+        <label for="volume3">Volume</label>
+        <input id="volume3" type="range" min="0" max="1" step="0.01" value="0.3" />
+      </div>
+
+      <div class="section-title">Harmonics</div>
+      <div class="control-group">
+        <label for="numHarmonics3">Number of harmonics</label>
+        <input id="numHarmonics3" type="range" min="1" max="8" step="1" value="4" />
+      </div>
+      <div id="harmonics3" class="harmonics-container"></div>
+
+      <div class="section-title">Fricative (Noise)</div>
+      <div class="control-group">
+        <label for="noise3">Noise mix</label>
+        <input id="noise3" type="range" min="0" max="1" step="0.01" value="0.02" />
+
+        <label for="noisePitch3">Noise pitch (cutoff)</label>
+        <input id="noisePitch3" type="range" min="100" max="8000" step="10" value="1200" />
+      </div>
+
+      <div class="section-title">Reverb</div>
+      <div class="control-group">
+        <label for="reverbTime3">Length (s)</label>
+        <input id="reverbTime3" type="range" min="0.1" max="5" step="0.1" value="2.2" />
+
+        <label for="reverbWet3">Wet mix</label>
+        <input id="reverbWet3" type="range" min="0" max="1" step="0.01" value="0.35" />
+      </div>
+
+      <div class="section-title">MIDI Event Log</div>
+      <div id="midiLog3" class="harmonics-container small"></div>
+    </div>
   </div>
 
   <script>
@@ -400,7 +476,7 @@
     const board1Seq = [
       'tab','1','q','2','w','3','e','4','r','5',
       't','6','y','7','u','8','i','9','o','0',
-      'p','-','[','=',' ]','\\'
+      'p','-','[','=',']','backspace','\\'
     ];
 
     const board2Seq = [
@@ -409,13 +485,78 @@
     ];
 
     // White keys (fixed "piano whites")
-    const whiteKeys1 = ['q','w','e','r','t','y','u','i','o','p','[',']','\\'];
+    const whiteKeys1 = ['tab', 'q','w','e','r','t','y','u','i','o','p','[',']','\\'];
     const whiteKeys2 = ['z','x','c','v','b','n','m',',','.','/'];
     const whiteSet1 = new Set(whiteKeys1);
     const whiteSet2 = new Set(whiteKeys2);
 
     // key -> midi per instrument
     const keyMidi = {}; // `${instr}:${key}` -> midi
+
+    const STORAGE_KEY = 'virtualPianoSettings';
+    const PERSISTED_FIELDS = [
+      'waveform','attack','decay','sustain','release','numHarmonics',
+      'noise','noiseCutoff','reverbTime','reverbWet','transposeNote',
+      'transposeOctave','volume','rootKey'
+    ];
+
+    function clamp(val, min, max) {
+      return Math.min(Math.max(val, min), max);
+    }
+
+    function loadSettings() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        return raw ? JSON.parse(raw) : null;
+      } catch (err) {
+        console.warn('Could not load settings', err);
+        return null;
+      }
+    }
+
+    function applySavedConfig(targetConfig, savedConfig, whiteKeys) {
+      if (!savedConfig) return;
+      PERSISTED_FIELDS.forEach(k => {
+        if (savedConfig[k] !== undefined) {
+          targetConfig[k] = savedConfig[k];
+        }
+      });
+      if (savedConfig.numHarmonics !== undefined) {
+        targetConfig.numHarmonics = clamp(parseInt(savedConfig.numHarmonics, 10) || 1, 1, 8);
+      }
+      if (Array.isArray(savedConfig.harmonics)) {
+        targetConfig.harmonics = savedConfig.harmonics.slice(0, 8);
+        while (targetConfig.harmonics.length < 8) {
+          targetConfig.harmonics.push(0);
+        }
+      }
+      if (whiteKeys && !whiteKeys.includes(targetConfig.rootKey)) {
+        targetConfig.rootKey = whiteKeys[0];
+      }
+    }
+
+    function serializeConfig(config) {
+      const serialized = {};
+      PERSISTED_FIELDS.forEach(k => {
+        serialized[k] = config[k];
+      });
+      serialized.numHarmonics = clamp(config.numHarmonics, 1, 8);
+      serialized.harmonics = config.harmonics.slice(0, 8);
+      return serialized;
+    }
+
+    function saveSettings() {
+      try {
+        const payload = {
+          instr1: serializeConfig(instr1Config),
+          instr2: serializeConfig(instr2Config)
+          // MIDI instrument (3) is intentionally not persisted for now
+        };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+      } catch (err) {
+        console.warn('Could not save settings', err);
+      }
+    }
 
     function createReverbImpulse(seconds, decay) {
       const rate = audioCtx.sampleRate;
@@ -460,7 +601,7 @@
 
       const activeVoices = new Map();
 
-      function startNote(keyId, frequency) {
+      function startNote(keyId, frequency, velocity = 1) {
         if (activeVoices.has(keyId)) return;
 
         const now = audioCtx.currentTime;
@@ -468,7 +609,7 @@
         voiceOutput.gain.value = 0;
 
         const oscGain = audioCtx.createGain();
-        oscGain.gain.value = 1;
+        oscGain.gain.value = velocity;
 
         const baseOscs = [];
         const numHarm = config.numHarmonics;
@@ -581,7 +722,8 @@
       noiseCutoff: 800,
       reverbTime: 2,
       reverbWet: 0.3,
-      transpose: 0,
+      transposeNote: 'c',
+      transposeOctave: 4,
       volume: 0.3,
       rootMidiBase: 60,   // C4 when root key is rootKey1
       rootKey: 'q'
@@ -599,14 +741,41 @@
       noiseCutoff: 400,
       reverbTime: 2.5,
       reverbWet: 0.4,
-      transpose: 0,
+      transposeNote: 'c',
+      transposeOctave: 3,
       volume: 0.3,
       rootMidiBase: 48,   // C3 when root key is rootKey2
       rootKey: 'z'
     };
 
+    // MIDI instrument config (not persisted yet)
+    const instr3Config = {
+      waveform: 'sine',
+      attack: 0.03,
+      decay: 0.2,
+      sustain: 0.9,
+      release: 0.5,
+      numHarmonics: 4,
+      harmonics: [1, 0.7, 0.4, 0.2, 0, 0, 0, 0],
+      noise: 0.02,
+      noiseCutoff: 1200,
+      reverbTime: 2.2,
+      reverbWet: 0.35,
+      transposeNote: 'c',
+      transposeOctave: 4,
+      volume: 0.3,
+      rootMidiBase: 60,
+      rootKey: 'midi'
+    };
+
+    const savedSettings = loadSettings();
+    applySavedConfig(instr1Config, savedSettings?.instr1, whiteKeys1);
+    applySavedConfig(instr2Config, savedSettings?.instr2, whiteKeys2);
+    // instr3Config uses only its defaults for now
+
     const instrument1 = createInstrument(instr1Config);
     const instrument2 = createInstrument(instr2Config);
+    const instrument3 = createInstrument(instr3Config);
 
     function buildHarmonicSliders(container, config) {
       container.innerHTML = '';
@@ -626,6 +795,10 @@
         slider.value = config.harmonics[i] ?? 0;
         slider.addEventListener('input', () => {
           config.harmonics[i] = parseFloat(slider.value);
+          // for MIDI instrument we don't persist; that's fine
+          if (config === instr1Config || config === instr2Config) {
+            saveSettings();
+          }
         });
         row.appendChild(slider);
 
@@ -635,6 +808,7 @@
 
     buildHarmonicSliders(document.getElementById('harmonics1'), instr1Config);
     buildHarmonicSliders(document.getElementById('harmonics2'), instr2Config);
+    buildHarmonicSliders(document.getElementById('harmonics3'), instr3Config);
 
     // Populate root key selects with white keys only
     function populateRootSelect(selectEl, whiteKeys, defaultKey) {
@@ -650,10 +824,79 @@
     populateRootSelect(document.getElementById('rootKey1'), whiteKeys1, instr1Config.rootKey);
     populateRootSelect(document.getElementById('rootKey2'), whiteKeys2, instr2Config.rootKey);
 
+    const TRANSPOSE_NOTES = [
+      { value: 'c', label: 'C' },
+      { value: 'c#', label: 'C#/Db' },
+      { value: 'd', label: 'D' },
+      { value: 'd#', label: 'D#/Eb' },
+      { value: 'e', label: 'E' },
+      { value: 'f', label: 'F' },
+      { value: 'f#', label: 'F#/Gb' },
+      { value: 'g', label: 'G' },
+      { value: 'g#', label: 'G#/Ab' },
+      { value: 'a', label: 'A' },
+      { value: 'a#', label: 'A#/Bb' },
+      { value: 'b', label: 'B' }
+    ];
+
+    function populateTransposeControls(noteSelect, octaveSelect, config) {
+      TRANSPOSE_NOTES.forEach(n => {
+        const opt = document.createElement('option');
+        opt.value = n.value;
+        opt.textContent = n.label;
+        if (n.value === config.transposeNote) opt.selected = true;
+        noteSelect.appendChild(opt);
+      });
+
+      for (let o = 0; o <= 10; o++) {
+        const opt = document.createElement('option');
+        opt.value = String(o);
+        opt.textContent = o;
+        if (o === config.transposeOctave) opt.selected = true;
+        octaveSelect.appendChild(opt);
+      }
+    }
+
+    function noteOctaveToMidi(note, octave) {
+      const semitoneMap = {
+        c: 0,
+        'c#': 1,
+        d: 2,
+        'd#': 3,
+        e: 4,
+        f: 5,
+        'f#': 6,
+        g: 7,
+        'g#': 8,
+        a: 9,
+        'a#': 10,
+        b: 11
+      };
+      const semis = semitoneMap[note] ?? 0;
+      return (octave + 1) * 12 + semis;
+    }
+
+    function syncControlsFromConfig(instrNum, config) {
+      document.getElementById(`waveform${instrNum}`).value = config.waveform;
+      document.getElementById(`attack${instrNum}`).value = config.attack;
+      document.getElementById(`decay${instrNum}`).value = config.decay;
+      document.getElementById(`sustain${instrNum}`).value = config.sustain;
+      document.getElementById(`release${instrNum}`).value = config.release;
+      document.getElementById(`numHarmonics${instrNum}`).value = config.numHarmonics;
+      document.getElementById(`noise${instrNum}`).value = config.noise;
+      document.getElementById(`noisePitch${instrNum}`).value = config.noiseCutoff;
+      document.getElementById(`reverbTime${instrNum}`).value = config.reverbTime;
+      document.getElementById(`reverbWet${instrNum}`).value = config.reverbWet;
+      document.getElementById(`transposeNote${instrNum}`).value = config.transposeNote;
+      document.getElementById(`transposeOctave${instrNum}`).value = config.transposeOctave;
+      document.getElementById(`volume${instrNum}`).value = config.volume;
+      document.getElementById(`rootKey${instrNum}`).value = config.rootKey;
+    }
+
     // Recompute pitches & labels for a board
     function updateBoardVisuals(boardSeq, whiteKeys, whiteSet, config, instrNum) {
       const rootIdx = whiteKeys.indexOf(config.rootKey);
-      const rootMidi = config.rootMidiBase + config.transpose;
+      const rootMidi = noteOctaveToMidi(config.transposeNote, config.transposeOctave);
 
       // Ionian offsets for white keys
       const whiteOffsets = {};
@@ -705,7 +948,7 @@
         const semitoneFromRoot = ((midi - rootMidi) % 12 + 12) % 12;
         const isScaleNote = IONIAN_SET.has(semitoneFromRoot);
 
-        document.querySelectorAll(`.key[data-key="${key}"]`).forEach(el => {
+        document.querySelectorAll(`.key[data-key="${key.replaceAll('\\','\\\\')}"]`).forEach(el => {
           el.classList.remove('white-key', 'black-key');
           el.classList.add(whiteSet.has(key) ? 'white-key' : 'black-key');
           const label = el.dataset.label || key.toUpperCase();
@@ -731,93 +974,180 @@
     // Controls for instrument 1
     document.getElementById('waveform1').addEventListener('change', e => {
       instr1Config.waveform = e.target.value;
+      saveSettings();
     });
     document.getElementById('attack1').addEventListener('input', e => {
       instr1Config.attack = parseFloat(e.target.value);
+      saveSettings();
     });
     document.getElementById('decay1').addEventListener('input', e => {
       instr1Config.decay = parseFloat(e.target.value);
+      saveSettings();
     });
     document.getElementById('sustain1').addEventListener('input', e => {
       instr1Config.sustain = parseFloat(e.target.value);
+      saveSettings();
     });
     document.getElementById('release1').addEventListener('input', e => {
       instr1Config.release = parseFloat(e.target.value);
+      saveSettings();
     });
     document.getElementById('numHarmonics1').addEventListener('input', e => {
       instr1Config.numHarmonics = parseInt(e.target.value, 10);
       buildHarmonicSliders(document.getElementById('harmonics1'), instr1Config);
+      saveSettings();
     });
     document.getElementById('noise1').addEventListener('input', e => {
       instr1Config.noise = parseFloat(e.target.value);
+      saveSettings();
     });
     document.getElementById('noisePitch1').addEventListener('input', e => {
       instr1Config.noiseCutoff = parseFloat(e.target.value);
+      saveSettings();
     });
     document.getElementById('reverbTime1').addEventListener('input', e => {
       instr1Config.reverbTime = parseFloat(e.target.value);
       instrument1.updateReverb();
+      saveSettings();
     });
     document.getElementById('reverbWet1').addEventListener('input', e => {
       instr1Config.reverbWet = parseFloat(e.target.value);
       instrument1.updateReverb();
+      saveSettings();
     });
-    document.getElementById('transpose1').addEventListener('input', e => {
-      instr1Config.transpose = parseInt(e.target.value, 10);
+    populateTransposeControls(
+      document.getElementById('transposeNote1'),
+      document.getElementById('transposeOctave1'),
+      instr1Config
+    );
+    syncControlsFromConfig(1, instr1Config);
+    document.getElementById('transposeNote1').addEventListener('change', e => {
+      instr1Config.transposeNote = e.target.value;
       updateKeyVisuals();
+      saveSettings();
+    });
+    document.getElementById('transposeOctave1').addEventListener('change', e => {
+      instr1Config.transposeOctave = parseInt(e.target.value, 10);
+      updateKeyVisuals();
+      saveSettings();
     });
     document.getElementById('volume1').addEventListener('input', e => {
       instrument1.setVolume(parseFloat(e.target.value));
+      saveSettings();
     });
     document.getElementById('rootKey1').addEventListener('change', e => {
       instr1Config.rootKey = e.target.value;
       updateKeyVisuals();
+      saveSettings();
     });
 
     // Controls for instrument 2
     document.getElementById('waveform2').addEventListener('change', e => {
       instr2Config.waveform = e.target.value;
+      saveSettings();
     });
     document.getElementById('attack2').addEventListener('input', e => {
       instr2Config.attack = parseFloat(e.target.value);
+      saveSettings();
     });
     document.getElementById('decay2').addEventListener('input', e => {
       instr2Config.decay = parseFloat(e.target.value);
+      saveSettings();
     });
     document.getElementById('sustain2').addEventListener('input', e => {
       instr2Config.sustain = parseFloat(e.target.value);
+      saveSettings();
     });
     document.getElementById('release2').addEventListener('input', e => {
       instr2Config.release = parseFloat(e.target.value);
+      saveSettings();
     });
     document.getElementById('numHarmonics2').addEventListener('input', e => {
       instr2Config.numHarmonics = parseInt(e.target.value, 10);
       buildHarmonicSliders(document.getElementById('harmonics2'), instr2Config);
+      saveSettings();
     });
     document.getElementById('noise2').addEventListener('input', e => {
       instr2Config.noise = parseFloat(e.target.value);
+      saveSettings();
     });
     document.getElementById('noisePitch2').addEventListener('input', e => {
       instr2Config.noiseCutoff = parseFloat(e.target.value);
+      saveSettings();
     });
     document.getElementById('reverbTime2').addEventListener('input', e => {
       instr2Config.reverbTime = parseFloat(e.target.value);
       instrument2.updateReverb();
+      saveSettings();
     });
     document.getElementById('reverbWet2').addEventListener('input', e => {
       instr2Config.reverbWet = parseFloat(e.target.value);
       instrument2.updateReverb();
+      saveSettings();
     });
-    document.getElementById('transpose2').addEventListener('input', e => {
-      instr2Config.transpose = parseInt(e.target.value, 10);
+    populateTransposeControls(
+      document.getElementById('transposeNote2'),
+      document.getElementById('transposeOctave2'),
+      instr2Config
+    );
+    syncControlsFromConfig(2, instr2Config);
+    document.getElementById('transposeNote2').addEventListener('change', e => {
+      instr2Config.transposeNote = e.target.value;
       updateKeyVisuals();
+      saveSettings();
+    });
+    document.getElementById('transposeOctave2').addEventListener('change', e => {
+      instr2Config.transposeOctave = parseInt(e.target.value, 10);
+      updateKeyVisuals();
+      saveSettings();
     });
     document.getElementById('volume2').addEventListener('input', e => {
       instrument2.setVolume(parseFloat(e.target.value));
+      saveSettings();
     });
     document.getElementById('rootKey2').addEventListener('change', e => {
       instr2Config.rootKey = e.target.value;
       updateKeyVisuals();
+      saveSettings();
+    });
+    saveSettings();
+
+    // Controls for instrument 3 (MIDI)
+    document.getElementById('waveform3').addEventListener('change', e => {
+      instr3Config.waveform = e.target.value;
+    });
+    document.getElementById('attack3').addEventListener('input', e => {
+      instr3Config.attack = parseFloat(e.target.value);
+    });
+    document.getElementById('decay3').addEventListener('input', e => {
+      instr3Config.decay = parseFloat(e.target.value);
+    });
+    document.getElementById('sustain3').addEventListener('input', e => {
+      instr3Config.sustain = parseFloat(e.target.value);
+    });
+    document.getElementById('release3').addEventListener('input', e => {
+      instr3Config.release = parseFloat(e.target.value);
+    });
+    document.getElementById('numHarmonics3').addEventListener('input', e => {
+      instr3Config.numHarmonics = parseInt(e.target.value, 10);
+      buildHarmonicSliders(document.getElementById('harmonics3'), instr3Config);
+    });
+    document.getElementById('noise3').addEventListener('input', e => {
+      instr3Config.noise = parseFloat(e.target.value);
+    });
+    document.getElementById('noisePitch3').addEventListener('input', e => {
+      instr3Config.noiseCutoff = parseFloat(e.target.value);
+    });
+    document.getElementById('reverbTime3').addEventListener('input', e => {
+      instr3Config.reverbTime = parseFloat(e.target.value);
+      instrument3.updateReverb();
+    });
+    document.getElementById('reverbWet3').addEventListener('input', e => {
+      instr3Config.reverbWet = parseFloat(e.target.value);
+      instrument3.updateReverb();
+    });
+    document.getElementById('volume3').addEventListener('input', e => {
+      instrument3.setVolume(parseFloat(e.target.value));
     });
 
     // Map from physical key to instrument
@@ -833,7 +1163,7 @@
     const downKeys = new Set();
 
     function setVisualKeyActive(key, active) {
-      document.querySelectorAll(`.key[data-key="${key}"]`).forEach(el => {
+      document.querySelectorAll(`.key[data-key="${key.replaceAll('\\','\\\\')}"]`).forEach(el => {
         el.classList.toggle('active', active);
       });
     }
@@ -913,8 +1243,191 @@
       el.addEventListener('mouseleave', stopForEl);
     });
 
+    // === MIDI support ===
+
+    let midiAccess = null;
+    const midiKeyboards = [];
+
+    function logMidiEvent(kb, evt, type, channel, data1, data2) {
+      const el = kb.logEl;
+      const time = evt.timeStamp.toFixed(1);
+      let desc;
+      if (type === 0x90) {
+        desc = `Note on ch${channel} n=${data1} v=${data2} (${midiToName(data1)})`;
+      } else if (type === 0x80 || (type === 0x90 && data2 === 0)) {
+        desc = `Note off ch${channel} n=${data1} (${midiToName(data1)})`;
+      } else if (type === 0xB0) {
+        desc = `CC ch${channel} cc=${data1} v=${data2}`;
+      } else {
+        desc = `0x${type.toString(16)} ch${channel} d1=${data1} d2=${data2}`;
+      }
+      const line = document.createElement('div');
+      line.textContent = `${time}ms – ${desc}`;
+      el.prepend(line);
+      while (el.childElementCount > 100) {
+        el.removeChild(el.lastChild);
+      }
+    }
+
+    function handleMIDIMessageForKeyboard(evt, kb) {
+      const [status, data1, data2] = evt.data;
+      const type = status & 0xf0;
+      const channel = (status & 0x0f) + 1;
+
+      // Channel filter: 0 = all
+      if (kb.channel && channel !== kb.channel) return;
+
+      logMidiEvent(kb, evt, type, channel, data1, data2);
+
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+
+      // volume control (CC7)
+      if (type === 0xB0 && data1 === 7) {
+        const vol = data2 / 127;
+        instrument3.setVolume(vol);
+      }
+
+      // Note on/off
+      if (type === 0x90 && data2 > 0) {
+        const midiNote = data1;
+        const freq = midiToFreq(midiNote);
+        const voiceId = `midi:${kb.input?.id || 'input'}:${midiNote}`;
+        kb.instrument.startNote(voiceId, freq, data2 / 127);
+      } else if (type === 0x80 || (type === 0x90 && data2 === 0)) {
+        const midiNote = data1;
+        const voiceId = `midi:${kb.input?.id || 'input'}:${midiNote}`;
+        kb.instrument.stopNote(voiceId);
+      }
+    }
+
+    function refreshInputsForKeyboard(kb) {
+      const select = kb.inputSelect;
+      if (!midiAccess) {
+        kb.statusEl.textContent = 'No MIDI access yet.';
+        select.innerHTML = '';
+        return;
+      }
+
+      const inputs = Array.from(midiAccess.inputs.values());
+      select.innerHTML = '';
+
+      if (inputs.length === 0) {
+        const opt = document.createElement('option');
+        opt.textContent = 'No MIDI inputs';
+        opt.value = '';
+        select.appendChild(opt);
+        kb.statusEl.textContent = 'No MIDI inputs connected.';
+        kb.input = null;
+        return;
+      }
+
+      const previousId = kb.input?.id || '';
+      let selectedInput = null;
+
+      inputs.forEach((input, idx) => {
+        const opt = document.createElement('option');
+        opt.value = input.id;
+        opt.textContent = input.name || `Input ${idx + 1}`;
+        if (input.id === previousId || (!previousId && idx === 0)) {
+          opt.selected = true;
+          selectedInput = input;
+        }
+        select.appendChild(opt);
+      });
+
+      if (!selectedInput) selectedInput = inputs[0];
+
+      kb.input = selectedInput;
+      if (kb.input) {
+        kb.input.onmidimessage = evt => handleMIDIMessageForKeyboard(evt, kb);
+        kb.statusEl.textContent = `Connected to ${kb.input.name || kb.input.id}`;
+      } else {
+        kb.statusEl.textContent = 'No MIDI input selected.';
+      }
+    }
+
+    function refreshMidiInputs() {
+      midiKeyboards.forEach(kb => refreshInputsForKeyboard(kb));
+    }
+
+    function createMidiKeyboard(options) {
+      const kb = {
+        instrument: options.instrument,
+        inputSelect: document.getElementById(options.inputSelectId),
+        channelSelect: document.getElementById(options.channelSelectId),
+        statusEl: document.getElementById(options.statusId),
+        logEl: document.getElementById(options.logId),
+        input: null,
+        channel: 0 // 0 = all
+      };
+
+      // Populate channel select: 0 (All), 1–16
+      kb.channelSelect.innerHTML = '';
+      const optAll = document.createElement('option');
+      optAll.value = '0';
+      optAll.textContent = 'All';
+      kb.channelSelect.appendChild(optAll);
+      for (let ch = 1; ch <= 16; ch++) {
+        const opt = document.createElement('option');
+        opt.value = String(ch);
+        opt.textContent = String(ch);
+        kb.channelSelect.appendChild(opt);
+      }
+      kb.channelSelect.value = '0';
+      kb.channelSelect.addEventListener('change', () => {
+        kb.channel = parseInt(kb.channelSelect.value, 10) || 0;
+      });
+
+      kb.inputSelect.addEventListener('change', () => {
+        if (!midiAccess) return;
+        const targetId = kb.inputSelect.value;
+        const input = Array.from(midiAccess.inputs.values()).find(i => i.id === targetId);
+        if (input) {
+          kb.input = input;
+          kb.input.onmidimessage = evt => handleMIDIMessageForKeyboard(evt, kb);
+          kb.statusEl.textContent = `Connected to ${kb.input.name || kb.input.id}`;
+        } else {
+          kb.statusEl.textContent = 'No MIDI input selected.';
+        }
+      });
+
+      midiKeyboards.push(kb);
+      return kb;
+    }
+
+    function initMIDI() {
+      const status3 = document.getElementById('midiStatus3');
+      if (!navigator.requestMIDIAccess) {
+        status3.textContent = 'This browser does not support Web MIDI.';
+        return;
+      }
+      navigator.requestMIDIAccess().then(access => {
+        midiAccess = access;
+        status3.textContent = 'MIDI ready.';
+        refreshMidiInputs();
+        midiAccess.onstatechange = () => {
+          refreshMidiInputs();
+        };
+      }, err => {
+        status3.textContent = 'Could not access MIDI: ' + err;
+      });
+    }
+
     // Initial mapping and labels
     updateKeyVisuals();
+
+    // Create MIDI keyboard wrapper for instrument 3
+    createMidiKeyboard({
+      instrument: instrument3,
+      inputSelectId: 'midiInputSelect3',
+      channelSelectId: 'midiChannel3',
+      statusId: 'midiStatus3',
+      logId: 'midiLog3'
+    });
+
+    initMIDI();
   </script>
 </body>
 </html>
