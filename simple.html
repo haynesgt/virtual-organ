@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Programmable Organ</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            text-align: center;
+        }
+        #status {
+            margin: 20px 0;
+            padding: 10px;
+            background: #f0f0f0;
+            border-radius: 5px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h1>Programmable Organ</h1>
+    <button id="enableBtn">Enable MIDI</button>
+    <div id="status">Connect a MIDI keyboard and click Enable MIDI</div>
+
+    <script>
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const oscillators = new Map();
+        /** @type {Map<number, GainNode>} */
+        const gainNodes = new Map();
+
+        const compressor = audioContext.createDynamicsCompressor();
+        compressor.threshold.value = -24;  // Start compressing at -24dB
+        compressor.knee.value = 30;        // Smooth compression curve
+        compressor.ratio.value = 12;       // Strong compression (12:1)
+        compressor.attack.value = 0.003;   // Fast attack (3ms)
+        compressor.release.value = 0.25;   // Medium release (250ms)
+        compressor.connect(audioContext.destination);
+
+        const dryGain = audioContext.createGain();
+        dryGain.gain.value = 0.9;
+        dryGain.connect(compressor);
+
+        const wetGain = audioContext.createGain();
+        wetGain.gain.value = 0.2;
+        wetGain.connect(compressor);
+
+        const reverbNode = audioContext.createGain();
+        reverbNode.connect(wetGain);
+
+        /** @type {function(AudioNode, number, number): DelayNode} */
+        function addEcho(input, feedback, delayTime) {
+            const delayNode = audioContext.createDelay();
+            const feedbackNode = audioContext.createGain();
+            delayNode.delayTime.value = delayTime;
+            feedbackNode.gain.value = feedback;
+
+            input.connect(delayNode);
+            delayNode.connect(feedbackNode);
+            feedbackNode.connect(input);
+
+            return delayNode;
+        }
+
+        //addEcho(reverbNode, 0.1, 0.1);
+        addEcho(reverbNode, 0.8, 0.01);
+
+        const masterGain = audioContext.createGain();
+        masterGain.gain.value = 1.0;
+        masterGain.connect(dryGain);
+        masterGain.connect(reverbNode);
+
+        function midiNoteToFrequency(note) {
+            return 440 * Math.pow(2, (note - 69) / 12);
+        }
+
+        const real = new Float32Array(32);
+        const imag = new Float32Array(32);
+        for (let i = 1; i < 32; i *= 2) {
+            imag[i] = 1 / i ** 2;
+        }
+        const organWave = audioContext.createPeriodicWave(real, imag);
+
+
+        function noteOn(note, velocity) {
+            const exists = oscillators.has(note);
+
+            if (!exists) {
+                const osc = audioContext.createOscillator();
+                osc.type = 'sine';
+                osc.frequency.value = midiNoteToFrequency(note);
+                osc.setPeriodicWave(organWave);
+            
+                const gain = audioContext.createGain();
+                gain.gain.value = 0;
+                
+                osc.connect(gain);
+                gain.connect(masterGain);
+                
+                osc.start();
+                
+                oscillators.set(note, osc);
+                gainNodes.set(note, gain);
+            }
+                const osc = oscillators.get(note);
+                const gain = gainNodes.get(note);
+
+                const attackT = 0.05;
+                gain.gain.setTargetAtTime(velocity / 127 * 0.3, audioContext.currentTime, Math.max(4 / osc.frequency.value, attackT));
+                //gain.gain.setTargetAtTime(velocity / 127 * 0.1, audioContext.currentTime + 0.1, 0.1);
+        }
+
+        function noteOff(note) {
+            const osc = oscillators.get(note);
+            const gain = gainNodes.get(note);
+            
+            if (osc && gain) {
+                gain.gain.cancelScheduledValues(audioContext.currentTime);
+                gain.gain.setTargetAtTime(0, audioContext.currentTime, 4 / osc.frequency.value);
+                /*setTimeout(() => {
+                    osc.stop();
+                    oscillators.delete(note);
+                    gainNodes.delete(note);
+                }, 100);*/
+            }
+        }
+
+        function onMIDIMessage(event) {
+            const [command, note, velocity] = event.data;
+            const channel = command & 0x0f;
+            const type = command & 0xf0;
+
+            if (type === 0x90 && velocity > 0) {
+                noteOn(note, velocity);
+                document.getElementById('status').textContent = `Note ON: ${note} (velocity: ${velocity})`;
+            } else if (type === 0x80 || (type === 0x90 && velocity === 0)) {
+                noteOff(note);
+                document.getElementById('status').textContent = `Note OFF: ${note}`;
+            }
+        }
+
+        function onMIDISuccess(midiAccess) {
+            console.log(midiAccess);
+            document.getElementById('status').textContent = 'MIDI enabled! Play your keyboard.';
+            
+            for (const input of midiAccess.inputs.values()) {
+                input.onmidimessage = onMIDIMessage;
+            }
+        }
+
+        function onMIDIFailure() {
+            document.getElementById('status').textContent = 'Failed to access MIDI devices.';
+        }
+
+        function startMidi() {
+            if (navigator.requestMIDIAccess) {
+                navigator.requestMIDIAccess()
+                    .then(onMIDISuccess, onMIDIFailure);
+            } else {
+                document.getElementById('status').textContent = 'Web MIDI API not supported.';
+            }
+        }
+    
+        document.getElementById('enableBtn').addEventListener('click', () => {
+            startMidi();
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            startMidi();
+        });
+        document.addEventListener('mousedown', () => {
+            startMidi();
+        });
+    </script>
+</body>
+</html>
