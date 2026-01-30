@@ -549,8 +549,8 @@
       try {
         const payload = {
           instr1: serializeConfig(instr1Config),
-          instr2: serializeConfig(instr2Config)
-          // MIDI instrument (3) is intentionally not persisted for now
+          instr2: serializeConfig(instr2Config),
+          instr3: serializeConfig(instr3Config)
         };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
       } catch (err) {
@@ -771,7 +771,7 @@
     const savedSettings = loadSettings();
     applySavedConfig(instr1Config, savedSettings?.instr1, whiteKeys1);
     applySavedConfig(instr2Config, savedSettings?.instr2, whiteKeys2);
-    // instr3Config uses only its defaults for now
+    applySavedConfig(instr3Config, savedSettings?.instr3, null); // no persistence for MIDI instr
 
     const instrument1 = createInstrument(instr1Config);
     const instrument2 = createInstrument(instr2Config);
@@ -795,10 +795,7 @@
         slider.value = config.harmonics[i] ?? 0;
         slider.addEventListener('input', () => {
           config.harmonics[i] = parseFloat(slider.value);
-          // for MIDI instrument we don't persist; that's fine
-          if (config === instr1Config || config === instr2Config) {
-            saveSettings();
-          }
+          saveSettings();
         });
         row.appendChild(slider);
 
@@ -1115,39 +1112,50 @@
     // Controls for instrument 3 (MIDI)
     document.getElementById('waveform3').addEventListener('change', e => {
       instr3Config.waveform = e.target.value;
+      saveSettings();
     });
     document.getElementById('attack3').addEventListener('input', e => {
       instr3Config.attack = parseFloat(e.target.value);
+      saveSettings();
     });
     document.getElementById('decay3').addEventListener('input', e => {
       instr3Config.decay = parseFloat(e.target.value);
+      saveSettings();
     });
     document.getElementById('sustain3').addEventListener('input', e => {
       instr3Config.sustain = parseFloat(e.target.value);
+      saveSettings();
     });
     document.getElementById('release3').addEventListener('input', e => {
       instr3Config.release = parseFloat(e.target.value);
+      saveSettings();
     });
     document.getElementById('numHarmonics3').addEventListener('input', e => {
       instr3Config.numHarmonics = parseInt(e.target.value, 10);
       buildHarmonicSliders(document.getElementById('harmonics3'), instr3Config);
+      saveSettings();
     });
     document.getElementById('noise3').addEventListener('input', e => {
       instr3Config.noise = parseFloat(e.target.value);
+      saveSettings();
     });
     document.getElementById('noisePitch3').addEventListener('input', e => {
       instr3Config.noiseCutoff = parseFloat(e.target.value);
+      saveSettings();
     });
     document.getElementById('reverbTime3').addEventListener('input', e => {
       instr3Config.reverbTime = parseFloat(e.target.value);
+      saveSettings();
       instrument3.updateReverb();
     });
     document.getElementById('reverbWet3').addEventListener('input', e => {
       instr3Config.reverbWet = parseFloat(e.target.value);
+      saveSettings();
       instrument3.updateReverb();
     });
     document.getElementById('volume3').addEventListener('input', e => {
       instrument3.setVolume(parseFloat(e.target.value));
+      saveSettings();
     });
 
     // Map from physical key to instrument
@@ -1251,15 +1259,15 @@
     function logMidiEvent(kb, evt, type, channel, data1, data2) {
       const el = kb.logEl;
       const time = evt.timeStamp.toFixed(1);
-      let desc;
+      let desc = `0x${evt.data[0].toString(16).padStart(2, '0')},${evt.data[1].toString().padStart(3, '0')},${evt.data[2].toString().padStart(3, '0')} – `;
       if (type === 0x90) {
-        desc = `Note on ch${channel} n=${data1} v=${data2} (${midiToName(data1)})`;
+        desc += `Note on ch${channel} n=${data1} v=${data2} (${midiToName(data1)})`;
       } else if (type === 0x80 || (type === 0x90 && data2 === 0)) {
-        desc = `Note off ch${channel} n=${data1} (${midiToName(data1)})`;
+        desc += `Note off ch${channel} n=${data1} (${midiToName(data1)})`;
       } else if (type === 0xB0) {
-        desc = `CC ch${channel} cc=${data1} v=${data2}`;
+        desc += `CC ch${channel} cc=${data1} v=${data2}`;
       } else {
-        desc = `0x${type.toString(16)} ch${channel} d1=${data1} d2=${data2}`;
+        desc += `0x${type.toString(16)} ch${channel} d1=${data1} d2=${data2}`;
       }
       const line = document.createElement('div');
       line.textContent = `${time}ms – ${desc}`;
@@ -1283,8 +1291,8 @@
         audioCtx.resume();
       }
 
-      // volume control (CC7)
-      if (type === 0xB0 && data1 === 7) {
+      // volume control (CC1)
+      if (type === 0xB0 && data1 === 1) {
         const vol = data2 / 127;
         instrument3.setVolume(vol);
       }
