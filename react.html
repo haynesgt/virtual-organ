@@ -131,13 +131,14 @@ class NoteInstrument {
             const existing = this.noteOscs[note];
             existing.gainNode.gain.cancelScheduledValues(audioCtx.currentTime);
             existing.gainNode.gain.setValueAtTime(existing.gainNode.gain.value, audioCtx.currentTime);
-            existing.gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + this.envelope.release);
+            existing.gainNode.gain.linearRampToValueAtTime(velocity, audioCtx.currentTime + this.envelope.attack);
+            existing.gainNode.gain.linearRampToValueAtTime(velocity * this.envelope.sustain, audioCtx.currentTime + this.envelope.attack + this.envelope.decay);
             return;
         }
         const osc = audioCtx.createOscillator();
         const gainNode = audioCtx.createGain();
 
-        osc.type = 'custom';
+        osc.type = 'sine';
         osc.setPeriodicWave(audioCtx.createPeriodicWave(
             new Float32Array([0, 0, 0, 0, 0]),
             new Float32Array([1, 0.5, 0.25, 0.125, 0.0625])
@@ -182,7 +183,7 @@ function App() {
     - reverb time and decay controls
     */
 
-  const [isAudioOn, setIsAudioOn] = useState(audioCtx.state === "running");
+    const [isAudioOn, setIsAudioOn] = useState(audioCtx.state === "running");
   const [attack, setAttack] = useState(0.01);
   const [decay, setDecay] = useState(0.2);
   const [sustain, setSustain] = useState(0.7);
@@ -191,6 +192,11 @@ function App() {
   const [reverbMix, setReverbMix] = useState(0.3);
   const [reverbTime, setReverbTime] = useState(2);
   const [reverbDecay, setReverbDecay] = useState(2);
+    const [midiAccess, setMidiAccess] = useState(null);
+    const [midiInputs, setMidiInputs] = useState([]);
+    const [selectedInputIds, setSelectedInputIds] = useState([]);
+    const [midiStatus, setMidiStatus] = useState("MIDI not enabled");
+    const activeInputsRef = useRef(new Map());
 
   const handleTurnOn = async () => {
       if (audioCtx.state !== "running") {
@@ -198,6 +204,97 @@ function App() {
       }
       setIsAudioOn(audioCtx.state === "running");
   };
+
+  const updateMidiInputs = (access) => {
+      const inputs = Array.from(access.inputs.values()).map((input) => ({
+          id: input.id,
+          name: input.name || "Unknown device",
+          manufacturer: input.manufacturer || "Unknown manufacturer"
+      }));
+      setMidiInputs(inputs);
+      if (inputs.length === 0) {
+          setMidiStatus("No MIDI inputs found");
+      } else {
+          setMidiStatus(`${inputs.length} MIDI input${inputs.length === 1 ? "" : "s"} available`);
+      }
+  };
+
+  const handleEnableMidi = async () => {
+      if (!navigator.requestMIDIAccess) {
+          setMidiStatus("Web MIDI not supported in this browser");
+          return;
+      }
+      try {
+          const access = await navigator.requestMIDIAccess();
+          setMidiAccess(access);
+          updateMidiInputs(access);
+          access.onstatechange = () => updateMidiInputs(access);
+      } catch (err) {
+          setMidiStatus("MIDI access denied");
+      }
+  };
+
+  const handleMidiMessage = async (event) => {
+      if (audioCtx.state !== "running") {
+          await audioCtx.resume();
+          setIsAudioOn(true);
+      }
+      const [status, note, velocity] = event.data;
+      const command = status & 0xf0;
+      if (command === 0x90 && velocity > 0) {
+          instrument.startNote(note, velocity / 127);
+      } else if (command === 0x80 || (command === 0x90 && velocity === 0)) {
+          instrument.stopNote(note);
+      }
+  };
+
+  const connectSelectedInputs = (ids) => {
+      if (!midiAccess) {
+          return;
+      }
+      const activeInputs = activeInputsRef.current;
+      const nextIds = new Set(ids);
+
+      for (const [id, input] of activeInputs.entries()) {
+          if (!nextIds.has(id)) {
+              input.onmidimessage = null;
+              activeInputs.delete(id);
+          }
+      }
+
+      ids.forEach((id) => {
+          if (!activeInputs.has(id)) {
+              const input = midiAccess.inputs.get(id);
+              if (input) {
+                  input.onmidimessage = handleMidiMessage;
+                  activeInputs.set(id, input);
+              }
+          }
+      });
+
+      if (ids.length === 0) {
+          setMidiStatus(midiInputs.length > 0 ? "No MIDI inputs selected" : "No MIDI inputs found");
+      } else {
+          setMidiStatus(`Connected to ${ids.length} input${ids.length === 1 ? "" : "s"}`);
+      }
+  };
+
+  const handleMidiSelection = (e) => {
+      const options = Array.from(e.target.selectedOptions);
+      const ids = options.map((option) => option.value);
+      setSelectedInputIds(ids);
+      connectSelectedInputs(ids);
+  };
+
+  useEffect(() => {
+      return () => {
+          const activeInputs = activeInputsRef.current;
+          for (const input of activeInputs.values()) {
+              input.onmidimessage = null;
+          }
+          activeInputs.clear();
+      };
+  }, []);
 
 
   const handleAttack = (e) => {
@@ -260,10 +357,26 @@ function App() {
         <div className="card mb-3">
             <div className="card-body">
                 <div className="form-group mb-3">
-                    <label className="form-label">Midi Device (not connected)</label>
-                    <select className="form-control" onChange={e => { e.persist(); console.log(e); }}>
-                        <option>None</option>
-                        <option>All</option>
+                    <div className="d-flex align-items-center justify-content-between">
+                        <label className="form-label mb-0">MIDI Inputs</label>
+                        <button className="btn btn-outline-secondary btn-sm" onClick={handleEnableMidi}>
+                            {midiAccess ? "Refresh MIDI" : "Enable MIDI"}
+                        </button>
+                    </div>
+                    <small className="text-muted d-block mb-2">{midiStatus}</small>
+                    <select
+                        className="form-control"
+                        multiple
+                        value={selectedInputIds}
+                        onChange={handleMidiSelection}
+                        disabled={!midiAccess || midiInputs.length === 0}
+                    >
+                        {midiInputs.length === 0 && <option value="">No MIDI devices</option>}
+                        {midiInputs.map((input) => (
+                            <option key={input.id} value={input.id}>
+                                {input.manufacturer} {input.name}
+                            </option>
+                        ))}
                     </select>
                 </div>
 
