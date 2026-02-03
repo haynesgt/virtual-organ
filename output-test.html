@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AudioContext.setSinkId Output Device Test</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 24px; max-width: 900px; }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin: 10px 0; }
+    button, select, input { padding: 8px 10px; font-size: 14px; }
+    #log { white-space: pre-wrap; background: #111; color: #eee; padding: 12px; border-radius: 10px; min-height: 170px; }
+    .muted { color: #555; }
+    code { background: #f3f3f3; padding: 2px 6px; border-radius: 6px; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eee; }
+  </style>
+</head>
+<body>
+  <h1>Output device routing test</h1>
+
+  <p class="muted">
+    Best path: <code>AudioContext.setSinkId()</code>. Fallback: WebAudio → MediaStream → <code>&lt;audio&gt;.setSinkId()</code>.
+    Run on <code>https://</code> or <code>http://localhost</code>.
+  </p>
+
+  <div class="row">
+    <span class="pill" id="origin"></span>
+    <span class="pill" id="support"></span>
+  </div>
+
+  <div class="row">
+    <button id="btnPerm">1) Ask audio permission</button>
+    <button id="btnRefresh">2) Refresh outputs</button>
+    <select id="selOut" style="min-width: 360px"></select>
+  </div>
+
+  <div class="row">
+    <label>Freq <input id="freq" type="number" value="440" min="20" max="20000" step="1" style="width: 110px"></label>
+    <label>Gain <input id="gain" type="number" value="0.05" min="0" max="0.5" step="0.01" style="width: 90px"></label>
+    <button id="btnStart">Start tone</button>
+    <button id="btnStop" disabled>Stop</button>
+  </div>
+
+  <p class="muted">
+    Tip: pick a *non-default* output. If you can’t distinguish devices, grant permission first so labels appear.
+  </p>
+
+  <h3>Log</h3>
+  <div id="log"></div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const logEl = $("log");
+  const selOut = $("selOut");
+  const originEl = $("origin");
+  const supportEl = $("support");
+
+  let ctx = null;
+  let osc = null;
+  let gainNode = null;
+
+  // Fallback path resources
+  let streamDest = null;
+  let audioEl = null;
+
+  let currentDeviceId = "";
+
+  function log(...args) {
+    const line = args.map(a => typeof a === "string" ? a : JSON.stringify(a, null, 2)).join(" ");
+    logEl.textContent += line + "\n";
+    logEl.scrollTop = logEl.scrollHeight;
+    console.log(...args);
+  }
+  function clearLog() { logEl.textContent = ""; }
+
+  function supportsHTMLSinkId() {
+    return typeof HTMLMediaElement !== "undefined" && "setSinkId" in HTMLMediaElement.prototype;
+  }
+  function supportsCtxSinkId() {
+    return typeof AudioContext !== "undefined" && "setSinkId" in AudioContext.prototype;
+  }
+
+  function updateSupportBadges() {
+    originEl.textContent = `Origin: ${location.origin}`;
+    supportEl.textContent =
+      `AudioContext.setSinkId: ${supportsCtxSinkId()}  |  <audio>.setSinkId: ${supportsHTMLSinkId()}`;
+  }
+
+  async function askPermission() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach(t => t.stop());
+      log("✅ Audio permission granted (closed immediately).");
+    } catch (e) {
+      log("❌ getUserMedia failed:", e.name, e.message);
+    }
+  }
+
+  async function refreshDevices() {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const outs = devices.filter(d => d.kind === "audiooutput");
+
+      selOut.innerHTML = "";
+      if (!outs.length) {
+        const opt = document.createElement("option");
+        opt.value = "";
+        opt.textContent = "(no audiooutput devices reported)";
+        selOut.appendChild(opt);
+      } else {
+        for (const d of outs) {
+          const opt = document.createElement("option");
+          opt.value = d.deviceId;
+          opt.textContent = d.label || `(audiooutput: ${d.deviceId.slice(0, 8)}…)`;
+          selOut.appendChild(opt);
+        }
+      }
+
+      // Keep the previous selection if possible
+      if (currentDeviceId && [...selOut.options].some(o => o.value === currentDeviceId)) {
+        selOut.value = currentDeviceId;
+      } else {
+        currentDeviceId = selOut.value;
+      }
+
+      log(`🔄 Found ${outs.length} audiooutput device(s).`);
+      if (location.protocol === "file:") {
+        log("⚠️ You’re on file:// — use https or http://localhost for best results.");
+      }
+    } catch (e) {
+      log("❌ enumerateDevices failed:", e.name, e.message);
+    }
+  }
+
+  async function startWithAudioContextSink(deviceId) {
+    ctx = new AudioContext();
+
+    // IMPORTANT: do setSinkId BEFORE building your graph + before resume (less glitchy)
+    try {
+      await ctx.setSinkId(deviceId);
+      log("✅ AudioContext.setSinkId ok:", deviceId);
+      log("   ctx.sinkId =", ctx.sinkId);
+    } catch (e) {
+      log("❌ AudioContext.setSinkId failed:", e.name, e.message);
+      throw e;
+    }
+
+    try {
+      await ctx.resume();
+      log("✅ AudioContext resumed. state:", ctx.state);
+    } catch (e) {
+      log("❌ AudioContext resume failed:", e.name, e.message);
+      throw e;
+    }
+
+    osc = new OscillatorNode(ctx, { frequency: Number($("freq").value) || 440 });
+    gainNode = new GainNode(ctx, { gain: Number($("gain").value) || 0.05 });
+    osc.connect(gainNode).connect(ctx.destination);
+
+    osc.start();
+    log("🎵 Oscillator started (direct to ctx.destination).");
+  }
+
+  async function startWithAudioElementSink(deviceId) {
+    // Fallback: WebAudio -> MediaStreamDestination -> <audio>.setSinkId()
+    ctx = new AudioContext();
+    streamDest = new MediaStreamAudioDestinationNode(ctx);
+
+    osc = new OscillatorNode(ctx, { frequency: Number($("freq").value) || 440 });
+    gainNode = new GainNode(ctx, { gain: Number($("gain").value) || 0.05 });
+    osc.connect(gainNode).connect(streamDest);
+
+    audioEl = document.createElement("audio");
+    audioEl.autoplay = true;
+    audioEl.controls = true;
+    audioEl.srcObject = streamDest.stream;
+    document.body.insertBefore(audioEl, logEl);
+
+    if (!supportsHTMLSinkId()) {
+      log("❌ <audio>.setSinkId not supported in this browser.");
+      throw new Error("No sink selection API available");
+    }
+
+    try {
+      await audioEl.setSinkId(deviceId);
+      log("✅ <audio>.setSinkId ok:", deviceId);
+    } catch (e) {
+      log("❌ <audio>.setSinkId failed:", e.name, e.message);
+      throw e;
+    }
+
+    await ctx.resume();
+    log("✅ AudioContext resumed. state:", ctx.state);
+
+    osc.start();
+    log("🎵 Oscillator started (stream -> <audio>).");
+  }
+
+  async function startTone() {
+    clearLog();
+
+    const deviceId = selOut.value;
+    currentDeviceId = deviceId;
+
+    if (!deviceId) {
+      log("❌ No output device selected.");
+      return;
+    }
+
+    // You usually need permission for stable labels/IDs. Not strictly required, but helps.
+    log("ℹ️ Selected output:", deviceId);
+
+    try {
+      if (supportsCtxSinkId()) {
+        log("➡️ Using AudioContext.setSinkId path.");
+        await startWithAudioContextSink(deviceId);
+      } else {
+        log("➡️ AudioContext.setSinkId not available. Trying <audio>.setSinkId fallback.");
+        await startWithAudioElementSink(deviceId);
+      }
+
+      $("btnStart").disabled = true;
+      $("btnStop").disabled = false;
+    } catch (e) {
+      log("🧯 Start failed. Likely causes: insecure origin, unsupported browser, stale deviceId, policy restrictions.");
+      // Clean up partial state
+      await stopTone(true);
+    }
+  }
+
+  async function stopTone(silent=false) {
+    try { if (osc) osc.stop(); } catch {}
+    try { await ctx?.close(); } catch {}
+
+    ctx = null;
+    osc = null;
+    gainNode = null;
+
+    if (audioEl) {
+      audioEl.srcObject = null;
+      audioEl.remove();
+      audioEl = null;
+    }
+    streamDest = null;
+
+    $("btnStart").disabled = false;
+    $("btnStop").disabled = true;
+
+    if (!silent) log("🛑 Stopped and cleaned up.");
+  }
+
+  // Live updates
+  $("freq").addEventListener("change", () => {
+    const v = Number($("freq").value) || 440;
+    if (osc) osc.frequency.value = v;
+    log("🔧 freq =", v);
+  });
+  $("gain").addEventListener("change", () => {
+    const v = Number($("gain").value) || 0.05;
+    if (gainNode) gainNode.gain.value = v;
+    log("🔧 gain =", v);
+  });
+
+  selOut.addEventListener("change", async () => {
+    currentDeviceId = selOut.value;
+    log("🎧 Selected output changed:", currentDeviceId);
+
+    // If currently running, try to re-route live
+    if (ctx && supportsCtxSinkId()) {
+      try {
+        await ctx.setSinkId(currentDeviceId);
+        log("✅ Re-route via AudioContext.setSinkId ok. ctx.sinkId =", ctx.sinkId);
+      } catch (e) {
+        log("❌ Re-route via AudioContext.setSinkId failed:", e.name, e.message);
+      }
+    } else if (audioEl && supportsHTMLSinkId()) {
+      try {
+        await audioEl.setSinkId(currentDeviceId);
+        log("✅ Re-route via <audio>.setSinkId ok.");
+      } catch (e) {
+        log("❌ Re-route via <audio>.setSinkId failed:", e.name, e.message);
+      }
+    } else {
+      log("ℹ️ Not running; will use this device on Start.");
+    }
+  });
+
+  $("btnPerm").addEventListener("click", askPermission);
+  $("btnRefresh").addEventListener("click", refreshDevices);
+  $("btnStart").addEventListener("click", startTone);
+  $("btnStop").addEventListener("click", () => stopTone(false));
+
+  // Hotplug
+  navigator.mediaDevices?.addEventListener?.("devicechange", async () => {
+    log("🔌 devicechange event");
+    await refreshDevices();
+
+    // If running, try to keep using selected device (re-apply)
+    if (ctx && supportsCtxSinkId()) {
+      try {
+        await ctx.setSinkId(selOut.value);
+        log("✅ Re-applied ctx.setSinkId after devicechange. ctx.sinkId =", ctx.sinkId);
+      } catch (e) {
+        log("❌ Re-apply ctx.setSinkId failed:", e.name, e.message);
+      }
+    } else if (audioEl && supportsHTMLSinkId()) {
+      try {
+        await audioEl.setSinkId(selOut.value);
+        log("✅ Re-applied <audio>.setSinkId after devicechange.");
+      } catch (e) {
+        log("❌ Re-apply <audio>.setSinkId failed:", e.name, e.message);
+      }
+    }
+  });
+
+  // Boot
+  updateSupportBadges();
+  refreshDevices();
+})();
+</script>
+</body>
+</html>

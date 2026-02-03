@@ -124,11 +124,14 @@
             if (osc && gain) {
                 gain.gain.cancelScheduledValues(audioContext.currentTime);
                 gain.gain.setTargetAtTime(0, audioContext.currentTime, 4 / osc.frequency.value);
-                /*setTimeout(() => {
+                setTimeout(() => {
+                    if (gain.gain.value > 0.001) {
+                        return;
+                    }
                     osc.stop();
                     oscillators.delete(note);
                     gainNodes.delete(note);
-                }, 100);*/
+                }, 100 + 4 / osc.frequency.value);
             }
         }
 

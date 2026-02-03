@@ -174,6 +174,12 @@
   </div>
 
   <div class="row">
+    <h2>Output</h2>
+    <select id="outputselection">
+    </select>
+  </div>
+
+  <div class="row">
     <!-- Instrument 1 -->
     <div class="panel" id="panel1">
       <h2>Keyboard 1 (Top row)</h2>
@@ -439,6 +445,60 @@
   <script>
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
     const audioCtx = new AudioContextClass();
+    const streamDest = new MediaStreamAudioDestinationNode(audioCtx);
+
+    const outputSelection = document.getElementById('outputselection');
+
+
+    async function updateOutputDevices() {
+      await navigator.mediaDevices.getUserMedia({ audio: true }); // prompts; needed to get full labels on many browsers
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const outputs = devices.filter(d => d.kind === 'audiooutput');
+      outputSelection.innerHTML = '';
+      outputs.forEach(device => {
+        const option = document.createElement('option');
+        option.value = device.deviceId;
+        option.textContent = device.label || `Output ${outputSelection.length + 1}`;
+        outputSelection.appendChild(option);
+      });
+    }
+
+    updateOutputDevices();
+    navigator.mediaDevices.addEventListener('devicechange', async () => {
+      updateOutputDevices();
+    });
+
+    const audioEl = document.createElement('audio');
+    audioEl.autoplay = true;
+    audioEl.srcObject = streamDest.stream;
+    document.body.appendChild(audioEl);
+
+    const rootOutput = audioCtx.createGain();
+    rootOutput.connect(streamDest);
+
+    outputSelection.addEventListener('change', async () => {
+      const deviceId = outputSelection.value;
+      if (typeof rootOutput.disconnect === 'function') {
+        rootOutput.disconnect();
+      }
+      if (deviceId === 'default') {
+        rootOutput.connect(audioCtx.destination);
+      } else {
+        if (false) {
+          rootOutput.connect(streamDest);
+          audioEl.setSinkId(deviceId);
+        } else {
+          const audio = new Audio();
+          audio.autoplay = true;
+          audio.srcObject = streamDest.stream;
+          await audio.setSinkId(deviceId);
+          const track = streamDest.stream.getAudioTracks()[0];
+          const newStream = new MediaStream([track]);
+          audio.srcObject = newStream;
+          rootOutput.connect(streamDest);
+        }
+      }
+    });
 
     // Ionian intervals (for white-key scale steps)
     const IONIAN_INTERVALS = [2, 2, 1, 2, 2, 2, 1];
@@ -575,7 +635,7 @@
     function createInstrument(config) {
       const output = audioCtx.createGain();
       output.gain.value = config.volume;
-      output.connect(audioCtx.destination);
+      output.connect(rootOutput);
 
       const reverbConvolver = audioCtx.createConvolver();
       reverbConvolver.buffer = createReverbImpulse(config.reverbTime, 2.5);

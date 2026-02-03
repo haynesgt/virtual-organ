@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<!-- Simple index.html with in-browser jsx compilation -->
+<head>
+<title>App</title>
+<script src="https://unpkg.com/lodash@4.17.21" crossorigin></script>
+<script src="https://unpkg.com/react@16/umd/react.development.js" crossorigin></script>
+<script src="https://unpkg.com/react-bootstrap@1.5.2/dist/react-bootstrap.js" crossorigin></script>
+<script src="https://unpkg.com/react-router-dom@5.2.0/umd/react-router-dom.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@16/umd/react-dom.development.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone@7.20.12/babel.js"></script>
+<!-- Useful things
+https://github.com/johndiiorio/react-useinterval/blob/master/src/index.tsx
+https://github.com/dance2die/react-use-localstorage/blob/master/src/index.ts
+-->
+<!-- no 404 request for icon -->
+<link rel="shortcut icon" href="data:image/x-icon;," type="image/x-icon">
+<link href="https://getbootstrap.com/docs/4.6/dist/css/bootstrap.min.css" rel="stylesheet" crossorigin="anonymous">
+<style>
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+const { HashRouter, Link, Route, useRouteMatch } = ReactRouterDOM;
+const { Dropdown } = ReactBootstrap;
+
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+function createReverbImpulse(seconds, decay) {
+    const rate = audioCtx.sampleRate;
+    const length = Math.max(1, Math.floor(seconds * rate));
+    const impulse = audioCtx.createBuffer(2, length, rate);
+    for (let ch = 0; ch < impulse.numberOfChannels; ch++) {
+        const channelData = impulse.getChannelData(ch);
+        for (let i = 0; i < length; i++) {
+            const t = i / length;
+            channelData[i] = (Math.random() * 2 - 1) * Math.pow(1 - t, decay);
+        }
+    }
+    return impulse;
+}
+
+function createCompressor() {
+    const compressor = audioCtx.createDynamicsCompressor();
+    compressor.threshold.value = -24;  // Start compressing at -24dB
+    compressor.knee.value = 30;        // Smooth compression curve
+    compressor.ratio.value = 12;       // Strong compression (12:1)
+    compressor.attack.value = 0.003;   // Fast attack (3ms)
+    compressor.release.value = 0.25;   // Medium release (250ms)
+    compressor.connect(audioCtx.destination);
+}
+
+function createInstrumentRootNode(config) {
+    const masterGain = audioCtx.createGain();
+    masterGain.gain.value = config.volume || 1.0;
+
+    const dryGain = audioCtx.createGain();
+    dryGain.gain.value = config.dryMix || 0.9;
+    dryGain.connect(masterGain);
+
+    const wetGain = audioCtx.createGain();
+    wetGain.gain.value = config.wetMix || 0.2;
+    wetGain.connect(masterGain);
+
+    const reverbNode = audioCtx.createGain();
+    reverbNode.connect(wetGain);
+
+    if (config.reverb) {
+        const convolver = audioCtx.createConvolver();
+        convolver.buffer = createReverbImpulse(config.reverb.seconds || 3, config.reverb.decay || 2);
+        reverbNode.connect(convolver);
+        convolver.connect(wetGain);
+    } else {
+        reverbNode.connect(wetGain);
+    }
+
+    return { masterGain, dryGain, wetGain, reverbNode };
+}
+
+const app = document.getElementById("app");
+function App() {
+  const [ count, setCount ] = useState(0);
+  return (
+    <div>
+    <p>Edit me!</p>
+    <p>{count} <button onClick={(e) => setCount((oldCount) => oldCount + 1)}>+</button>
+    </p>
+    </div>
+  )
+}
+ReactDOM.render(React.createElement(App), document.getElementById("app"))
+</script>
+</body>
+</html>
