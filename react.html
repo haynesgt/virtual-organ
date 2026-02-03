@@ -13,8 +13,8 @@
 https://github.com/johndiiorio/react-useinterval/blob/master/src/index.tsx
 https://github.com/dance2die/react-use-localstorage/blob/master/src/index.ts
 -->
-<!-- no 404 request for icon -->
-<link rel="shortcut icon" href="data:image/x-icon;," type="image/x-icon">
+<!-- no 404 request for icon 
+<link rel="shortcut icon" href="data:image/x-icon;," type="image/x-icon">-->
 <link href="https://getbootstrap.com/docs/4.6/dist/css/bootstrap.min.css" rel="stylesheet" crossorigin="anonymous">
 <style>
 </style>
@@ -47,7 +47,7 @@ function createCompressor() {
     compressor.threshold.value = -24;  // Start compressing at -24dB
     compressor.knee.value = 30;        // Smooth compression curve
     compressor.ratio.value = 12;       // Strong compression (12:1)
-    compressor.attack.value = 0.003;   // Fast attack (3ms)
+    compressor.attack.value = 0.01;   // Fast attack (3ms)
     compressor.release.value = 0.25;   // Medium release (250ms)
     return compressor;
 }
@@ -127,12 +127,15 @@ class NoteInstrument {
     }
 
     startNote(note, velocity = 1.0) {
+        const noteFrequency = 440 * Math.pow(2, (note - 69) / 12);
+        const noteWavelength = 1 / noteFrequency;
+        const attack = Math.max(this.envelope.attack, noteWavelength);
         if (this.noteOscs[note]) {
             const existing = this.noteOscs[note];
             existing.gainNode.gain.cancelScheduledValues(audioCtx.currentTime);
             existing.gainNode.gain.setValueAtTime(existing.gainNode.gain.value, audioCtx.currentTime);
-            existing.gainNode.gain.linearRampToValueAtTime(velocity, audioCtx.currentTime + this.envelope.attack);
-            existing.gainNode.gain.linearRampToValueAtTime(velocity * this.envelope.sustain, audioCtx.currentTime + this.envelope.attack + this.envelope.decay);
+            existing.gainNode.gain.linearRampToValueAtTime(velocity, audioCtx.currentTime + attack);
+            existing.gainNode.gain.linearRampToValueAtTime(velocity * this.envelope.sustain, audioCtx.currentTime + attack + this.envelope.decay);
             return;
         }
         const osc = audioCtx.createOscillator();
@@ -143,12 +146,12 @@ class NoteInstrument {
             new Float32Array([0, 0, 0, 0, 0]),
             new Float32Array([1, 0.5, 0.25, 0.125, 0.0625])
         ));
-        osc.frequency.value = 440 * Math.pow(2, (note - 69) / 12); // MIDI note to frequency
+        osc.frequency.value = noteFrequency;
 
         const now = audioCtx.currentTime;
         gainNode.gain.setValueAtTime(0, now);
-        gainNode.gain.linearRampToValueAtTime(velocity, now + this.envelope.attack);
-        gainNode.gain.linearRampToValueAtTime(velocity * this.envelope.sustain, now + this.envelope.attack + this.envelope.decay);
+        gainNode.gain.linearRampToValueAtTime(velocity, now + attack);
+        gainNode.gain.linearRampToValueAtTime(velocity * this.envelope.sustain, now + attack + this.envelope.decay);
 
         osc.connect(gainNode);
         gainNode.connect(this.rootNode.dryGain);
@@ -165,6 +168,13 @@ class NoteInstrument {
             existing.gainNode.gain.cancelScheduledValues(now);
             existing.gainNode.gain.setValueAtTime(existing.gainNode.gain.value, now);
             existing.gainNode.gain.linearRampToValueAtTime(0, now + this.envelope.release);
+            setTimeout(() => {
+                if (existing.gainNode.gain === 0) {
+                    existing.osc.stop();
+                    existing.osc.disconnect();
+                    existing.gainNode.disconnect();
+                }
+            }, this.envelope.release * 1000 + 100);
         }
     }
 }
@@ -174,36 +184,20 @@ const app = document.getElementById("app");
 const instrument = new NoteInstrument();
 
 function App() {
-    /*
-    Controls:
-    - Turn On button: resumes audio context
-    - MIDI device selector
-    - envelope controls: attack, decay, sustain, release
-    - reverb mix slider
-    - reverb time and decay controls
-    */
-
     const [isAudioOn, setIsAudioOn] = useState(audioCtx.state === "running");
-  const [attack, setAttack] = useState(0.01);
-  const [decay, setDecay] = useState(0.2);
-  const [sustain, setSustain] = useState(0.7);
-  const [release, setRelease] = useState(0.5);
-  const [volume, setVolume] = useState(0.7);
-  const [reverbMix, setReverbMix] = useState(0.3);
-  const [reverbTime, setReverbTime] = useState(2);
-  const [reverbDecay, setReverbDecay] = useState(2);
+    const [attack, setAttack] = useState(() => parseFloat(localStorage.getItem('attack')) || 0.01);
+    const [decay, setDecay] = useState(() => parseFloat(localStorage.getItem('decay')) || 0.2);
+    const [sustain, setSustain] = useState(() => parseFloat(localStorage.getItem('sustain')) || 0.7);
+    const [release, setRelease] = useState(() => parseFloat(localStorage.getItem('release')) || 0.5);
+    const [volume, setVolume] = useState(() => parseFloat(localStorage.getItem('volume')) || 0.7);
+    const [reverbMix, setReverbMix] = useState(() => parseFloat(localStorage.getItem('reverbMix')) || 0.3);
+    const [reverbTime, setReverbTime] = useState(() => parseFloat(localStorage.getItem('reverbTime')) || 2);
+    const [reverbDecay, setReverbDecay] = useState(() => parseFloat(localStorage.getItem('reverbDecay')) || 2);
     const [midiAccess, setMidiAccess] = useState(null);
     const [midiInputs, setMidiInputs] = useState([]);
-    const [selectedInputIds, setSelectedInputIds] = useState([]);
+    const [selectedInputIds, setSelectedInputIds] = useState(() => JSON.parse(localStorage.getItem('selectedInputIds')) || []);
     const [midiStatus, setMidiStatus] = useState("MIDI not enabled");
     const activeInputsRef = useRef(new Map());
-
-  const handleTurnOn = async () => {
-      if (audioCtx.state !== "running") {
-          await audioCtx.resume();
-      }
-      setIsAudioOn(audioCtx.state === "running");
-  };
 
   const updateMidiInputs = (access) => {
       const inputs = Array.from(access.inputs.values()).map((input) => ({
@@ -296,62 +290,62 @@ function App() {
       };
   }, []);
 
+    useEffect(() => {
+        handleEnableMidi();
+    }, []);
 
-  const handleAttack = (e) => {
-      const value = Number(e.target.value);
-      setAttack(value);
-      instrument.setAttack(value);
-  };
+  useEffect(() => {
+      localStorage.setItem('attack', attack);
+      instrument.setAttack(attack);
+  }, [attack]);
 
-  const handleDecay = (e) => {
-      const value = Number(e.target.value);
-      setDecay(value);
-      instrument.setDecay(value);
-  };
+  useEffect(() => {
+      localStorage.setItem('decay', decay);
+      instrument.setDecay(decay);
+  }, [decay]);
 
-  const handleSustain = (e) => {
-      const value = Number(e.target.value);
-      setSustain(value);
-      instrument.setSustain(value);
-  };
+  useEffect(() => {
+      localStorage.setItem('sustain', sustain);
+      instrument.setSustain(sustain);
+  }, [sustain]);
 
-  const handleRelease = (e) => {
-      const value = Number(e.target.value);
-      setRelease(value);
-      instrument.setRelease(value);
-  };
+  useEffect(() => {
+      localStorage.setItem('release', release);
+      instrument.setRelease(release);
+  }, [release]);
 
-  const handleVolume = (e) => {
-      const value = Number(e.target.value);
-      setVolume(value);
-      instrument.setVolume(value);
-  };
+  useEffect(() => {
+      localStorage.setItem('volume', volume);
+      instrument.setVolume(volume);
+  }, [volume]);
 
-  const handleReverbMix = (e) => {
-      const value = Number(e.target.value);
-      setReverbMix(value);
-      instrument.setReverbMix(value);
-  };
+  useEffect(() => {
+      localStorage.setItem('reverbMix', reverbMix);
+      instrument.setReverbMix(reverbMix);
+  }, [reverbMix]);
 
-  const handleReverbTime = (e) => {
-      const value = Number(e.target.value);
-      setReverbTime(value);
-      instrument.setReverbTime(value, reverbDecay);
-  };
+  useEffect(() => {
+      localStorage.setItem('reverbTime', reverbTime);
+      instrument.setReverbTime(reverbTime, reverbDecay);
+  }, [reverbTime, reverbDecay]);
 
-  const handleReverbDecay = (e) => {
-      const value = Number(e.target.value);
-      setReverbDecay(value);
-      instrument.setReverbTime(reverbTime, value);
-  };
+  useEffect(() => {
+      localStorage.setItem('selectedInputIds', JSON.stringify(selectedInputIds));
+  }, [selectedInputIds]);
+
+  const handleAttack = (e) => setAttack(Number(e.target.value));
+  const handleDecay = (e) => setDecay(Number(e.target.value));
+  const handleSustain = (e) => setSustain(Number(e.target.value));
+  const handleRelease = (e) => setRelease(Number(e.target.value));
+  const handleVolume = (e) => setVolume(Number(e.target.value));
+  const handleReverbMix = (e) => setReverbMix(Number(e.target.value));
+  const handleReverbTime = (e) => setReverbTime(Number(e.target.value));
+  const handleReverbDecay = (e) => setReverbDecay(Number(e.target.value));
 
   return (
     <div className="container py-4">
         <div className="d-flex align-items-center justify-content-between mb-3">
             <h1 className="h3 mb-0">React Audio Instrument</h1>
-            <button className={`btn ${isAudioOn ? "btn-success" : "btn-primary"}`} onClick={handleTurnOn}>
-                {isAudioOn ? "Audio On" : "Turn On"}
-            </button>
         </div>
 
         <div className="card mb-3">
