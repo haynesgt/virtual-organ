@@ -49,8 +49,11 @@ function createCompressor() {
     compressor.ratio.value = 12;       // Strong compression (12:1)
     compressor.attack.value = 0.003;   // Fast attack (3ms)
     compressor.release.value = 0.25;   // Medium release (250ms)
-    compressor.connect(audioCtx.destination);
+    return compressor;
 }
+
+const compressor = createCompressor();
+compressor.connect(audioCtx.destination);
 
 function createInstrumentRootNode(config) {
     const masterGain = audioCtx.createGain();
@@ -67,26 +70,129 @@ function createInstrumentRootNode(config) {
     const reverbNode = audioCtx.createGain();
     reverbNode.connect(wetGain);
 
-    if (config.reverb) {
-        const convolver = audioCtx.createConvolver();
-        convolver.buffer = createReverbImpulse(config.reverb.seconds || 3, config.reverb.decay || 2);
-        reverbNode.connect(convolver);
-        convolver.connect(wetGain);
-    } else {
-        reverbNode.connect(wetGain);
+    const convolver = audioCtx.createConvolver();
+    convolver.buffer = createReverbImpulse(config.reverb.seconds || 3, config.reverb.decay || 2);
+    reverbNode.connect(convolver);
+    convolver.connect(wetGain);
+
+    return { masterGain, dryGain, wetGain, reverbNode, convolver };
+}
+
+class NoteInstrument {
+    constructor() {
+        this.rootNode = createInstrumentRootNode({
+            volume: 0.7,
+            dryMix: 0.8,
+            wetMix: 0.3,
+            reverb: { seconds: 2, decay: 2 }
+        });
+        this.rootNode.masterGain.connect(compressor);
+        this.noteOscs = {};
+        this.envelope = {
+            attack: 0.01,
+            decay: 0.2,
+            sustain: 0.7,
+            release: 0.5
+        };
     }
 
-    return { masterGain, dryGain, wetGain, reverbNode };
+    setAttack(value) {
+        this.envelope.attack = value;
+    }
+
+    setDecay(value) {
+        this.envelope.decay = value;
+    }
+
+    setSustain(value) {
+        this.envelope.sustain = value;
+    }
+
+    setRelease(value) {
+        this.envelope.release = value;
+    }
+
+    setVolume(value) {
+        this.rootNode.masterGain.gain.setValueAtTime(value, audioCtx.currentTime);
+    }
+
+    setReverbMix(value) {
+        this.rootNode.wetGain.gain.setValueAtTime(value, audioCtx.currentTime);
+        this.rootNode.dryGain.gain.setValueAtTime(1.0 - value, audioCtx.currentTime);
+    }
+
+    setReverbTime(seconds, decay) {
+        const convolver = this.rootNode.convolver;
+        convolver.buffer = createReverbImpulse(seconds, decay);
+    }
+
+    startNote(note, velocity = 1.0) {
+        if (this.noteOscs[note]) {
+            const existing = this.noteOscs[note];
+            existing.gainNode.gain.cancelScheduledValues(audioCtx.currentTime);
+            existing.gainNode.gain.setValueAtTime(existing.gainNode.gain.value, audioCtx.currentTime);
+            existing.gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + this.envelope.release);
+            return;
+        }
+        const osc = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+
+        osc.type = 'custom';
+        osc.setPeriodicWave(audioCtx.createPeriodicWave(
+            new Float32Array([0, 0, 0, 0, 0]),
+            new Float32Array([1, 0.5, 0.25, 0.125, 0.0625])
+        ));
+        osc.frequency.value = 440 * Math.pow(2, (note - 69) / 12); // MIDI note to frequency
+
+        const now = audioCtx.currentTime;
+        gainNode.gain.setValueAtTime(0, now);
+        gainNode.gain.linearRampToValueAtTime(velocity, now + this.envelope.attack);
+        gainNode.gain.linearRampToValueAtTime(velocity * this.envelope.sustain, now + this.envelope.attack + this.envelope.decay);
+
+        osc.connect(gainNode);
+        gainNode.connect(this.rootNode.dryGain);
+        gainNode.connect(this.rootNode.reverbNode);
+
+        osc.start();
+        this.noteOscs[note] = { osc, gainNode };
+    }
+
+    stopNote(note) {
+        const existing = this.noteOscs[note];
+        if (existing) {
+            const now = audioCtx.currentTime;
+            existing.gainNode.gain.cancelScheduledValues(now);
+            existing.gainNode.gain.setValueAtTime(existing.gainNode.gain.value, now);
+            existing.gainNode.gain.linearRampToValueAtTime(0, now + this.envelope.release);
+        }
+    }
 }
 
 const app = document.getElementById("app");
+
+const instrument = new NoteInstrument();
+
 function App() {
-  const [ count, setCount ] = useState(0);
+    /*
+    Controls:
+    - Turn On button: resumes audio context
+    - MIDI device selector
+    - Velocity slider: sets velocity for note on
+    - envelope controls: attack, decay, sustain, release
+    - reverb mix slider
+    - reverb time and decay controls
+    */
+
   return (
     <div>
-    <p>Edit me!</p>
-    <p>{count} <button onClick={(e) => setCount((oldCount) => oldCount + 1)}>+</button>
-    </p>
+        <h1>React Audio Instrument</h1>
+        <button>Turn On</button>
+        Midi Device:
+        <select onChange={e => { e.persist(); console.log(e); }}>
+            <option>None</option>
+            <option>All</option>
+        </select>
+        <input type="range" min="0" max="127" defaultValue="100" id="velocitySlider"/>
     </div>
   )
 }
