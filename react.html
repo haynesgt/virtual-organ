@@ -177,22 +177,138 @@ function App() {
     Controls:
     - Turn On button: resumes audio context
     - MIDI device selector
-    - Velocity slider: sets velocity for note on
     - envelope controls: attack, decay, sustain, release
     - reverb mix slider
     - reverb time and decay controls
     */
 
+  const [isAudioOn, setIsAudioOn] = useState(audioCtx.state === "running");
+  const [attack, setAttack] = useState(0.01);
+  const [decay, setDecay] = useState(0.2);
+  const [sustain, setSustain] = useState(0.7);
+  const [release, setRelease] = useState(0.5);
+  const [volume, setVolume] = useState(0.7);
+  const [reverbMix, setReverbMix] = useState(0.3);
+  const [reverbTime, setReverbTime] = useState(2);
+  const [reverbDecay, setReverbDecay] = useState(2);
+
+  const handleTurnOn = async () => {
+      if (audioCtx.state !== "running") {
+          await audioCtx.resume();
+      }
+      setIsAudioOn(audioCtx.state === "running");
+  };
+
+
+  const handleAttack = (e) => {
+      const value = Number(e.target.value);
+      setAttack(value);
+      instrument.setAttack(value);
+  };
+
+  const handleDecay = (e) => {
+      const value = Number(e.target.value);
+      setDecay(value);
+      instrument.setDecay(value);
+  };
+
+  const handleSustain = (e) => {
+      const value = Number(e.target.value);
+      setSustain(value);
+      instrument.setSustain(value);
+  };
+
+  const handleRelease = (e) => {
+      const value = Number(e.target.value);
+      setRelease(value);
+      instrument.setRelease(value);
+  };
+
+  const handleVolume = (e) => {
+      const value = Number(e.target.value);
+      setVolume(value);
+      instrument.setVolume(value);
+  };
+
+  const handleReverbMix = (e) => {
+      const value = Number(e.target.value);
+      setReverbMix(value);
+      instrument.setReverbMix(value);
+  };
+
+  const handleReverbTime = (e) => {
+      const value = Number(e.target.value);
+      setReverbTime(value);
+      instrument.setReverbTime(value, reverbDecay);
+  };
+
+  const handleReverbDecay = (e) => {
+      const value = Number(e.target.value);
+      setReverbDecay(value);
+      instrument.setReverbTime(reverbTime, value);
+  };
+
   return (
-    <div>
-        <h1>React Audio Instrument</h1>
-        <button>Turn On</button>
-        Midi Device:
-        <select onChange={e => { e.persist(); console.log(e); }}>
-            <option>None</option>
-            <option>All</option>
-        </select>
-        <input type="range" min="0" max="127" defaultValue="100" id="velocitySlider"/>
+    <div className="container py-4">
+        <div className="d-flex align-items-center justify-content-between mb-3">
+            <h1 className="h3 mb-0">React Audio Instrument</h1>
+            <button className={`btn ${isAudioOn ? "btn-success" : "btn-primary"}`} onClick={handleTurnOn}>
+                {isAudioOn ? "Audio On" : "Turn On"}
+            </button>
+        </div>
+
+        <div className="card mb-3">
+            <div className="card-body">
+                <div className="form-group mb-3">
+                    <label className="form-label">Midi Device (not connected)</label>
+                    <select className="form-control" onChange={e => { e.persist(); console.log(e); }}>
+                        <option>None</option>
+                        <option>All</option>
+                    </select>
+                </div>
+
+                <div className="row">
+                    <div className="col-md-6">
+                        <h2 className="h5">Envelope</h2>
+                        <div className="form-group mb-3">
+                            <label className="form-label">Attack: {attack.toFixed(3)}s</label>
+                            <input type="range" min="0.001" max="1" step="0.001" value={attack} onChange={handleAttack} className="form-control-range" />
+                        </div>
+                        <div className="form-group mb-3">
+                            <label className="form-label">Decay: {decay.toFixed(3)}s</label>
+                            <input type="range" min="0.001" max="2" step="0.001" value={decay} onChange={handleDecay} className="form-control-range" />
+                        </div>
+                        <div className="form-group mb-3">
+                            <label className="form-label">Sustain: {sustain.toFixed(2)}</label>
+                            <input type="range" min="0" max="1" step="0.01" value={sustain} onChange={handleSustain} className="form-control-range" />
+                        </div>
+                        <div className="form-group mb-3">
+                            <label className="form-label">Release: {release.toFixed(3)}s</label>
+                            <input type="range" min="0.001" max="2" step="0.001" value={release} onChange={handleRelease} className="form-control-range" />
+                        </div>
+                    </div>
+                    <div className="col-md-6">
+                        <h2 className="h5">Output</h2>
+                        <div className="form-group mb-3">
+                            <label className="form-label">Volume: {volume.toFixed(2)}</label>
+                            <input type="range" min="0" max="1" step="0.01" value={volume} onChange={handleVolume} className="form-control-range" />
+                        </div>
+                        <div className="form-group mb-3">
+                            <label className="form-label">Reverb Mix: {reverbMix.toFixed(2)}</label>
+                            <input type="range" min="0" max="1" step="0.01" value={reverbMix} onChange={handleReverbMix} className="form-control-range" />
+                        </div>
+                        <div className="form-group mb-3">
+                            <label className="form-label">Reverb Time: {reverbTime.toFixed(2)}s</label>
+                            <input type="range" min="0.1" max="6" step="0.1" value={reverbTime} onChange={handleReverbTime} className="form-control-range" />
+                        </div>
+                        <div className="form-group mb-3">
+                            <label className="form-label">Reverb Decay: {reverbDecay.toFixed(2)}</label>
+                            <input type="range" min="0.5" max="6" step="0.1" value={reverbDecay} onChange={handleReverbDecay} className="form-control-range" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
   )
 }
