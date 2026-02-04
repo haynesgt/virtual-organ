@@ -4,6 +4,7 @@
 <head>
 <title>Synth</title>
 <script src="https://unpkg.com/lodash@4.17.21" crossorigin></script>
+<script src="https://unpkg.com/@tonejs/midi@2.0.27" crossorigin></script>
 <script src="https://unpkg.com/react@16/umd/react.development.js" crossorigin></script>
 <script src="https://unpkg.com/react-bootstrap@1.5.2/dist/react-bootstrap.js" crossorigin></script>
 <script src="https://unpkg.com/react-router-dom@5.2.0/umd/react-router-dom.js" crossorigin></script>
@@ -29,6 +30,18 @@ const { Dropdown } = ReactBootstrap;
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
 const harmonicsCount = 20;
+
+// Helper hook to create state with matching ref for callback access
+function useStateWithRef(initialValue) {
+    const [state, setState] = useState(initialValue);
+    const ref = useRef(initialValue);
+    
+    useEffect(() => {
+        ref.current = state;
+    }, [state]);
+    
+    return [state, setState, ref];
+}
 
 function createReverbImpulse(seconds, decay) {
     const rate = audioCtx.sampleRate;
@@ -455,12 +468,14 @@ function App() {
     const [learningControlId, setLearningControlId] = useState(null);
     const [ccMappings, setCcMappings] = useState(() => JSON.parse(localStorage.getItem('ccMappings')) || {});
     const [learnStatus, setLearnStatus] = useState("");
-    const [isRecording, setIsRecording] = useState(false);
+    const [isRecording, setIsRecording, isRecordingRef] = useStateWithRef(false);
     const [recordingTime, setRecordingTime] = useState(0);
     const [recordedChunks, setRecordedChunks] = useState([]);
     const mediaRecorderRef = useRef(null);
     const recordedChunksRef = useRef([]);
     const recordingTimerRef = useRef(null);
+    const recordedMidiEventsRef = useRef([]);
+    const recordStartTimeRef = useRef(null);
     const activeInputsRef = useRef(new Map());
     const learningControlIdRef = useRef(null);
     const ccMappingsRef = useRef({});
@@ -681,6 +696,14 @@ function App() {
       const channel = status & 0x0f;
       const command = status & 0xf0;
 
+      // Capture MIDI if recording
+      if (isRecordingRef.current && recordStartTimeRef.current) {
+          recordedMidiEventsRef.current.push({
+              time: Date.now() - recordStartTimeRef.current,
+              data: [...event.data]
+          });
+      }
+
       // log hex message
       console.log(`MIDI Message: ${[...event.data].map((b) => "0x" + b.toString(16).padStart(2, '0')).join(' ')}`);
 
@@ -723,13 +746,23 @@ function App() {
 
   const startRecording = () => {
       setRecordedChunks([]);
+      recordedMidiEventsRef.current = [];
+      recordStartTimeRef.current = Date.now();
+      
       const mediaRecorder = new MediaRecorder(recordingDestination.stream, { mimeType: 'audio/webm;codecs=opus' });
       mediaRecorderRef.current = mediaRecorder;
       setRecordingTime(0);
       
       mediaRecorder.ondataavailable = (e) => {
         console.log('Data available:', e.data);
-          setRecordedChunks([...recordedChunksRef.current, e.data]);
+            setRecordedChunks([...recordedChunksRef.current, e.data]);
+            const blob = new Blob([e.data], { type: 'audio/webm;codecs=opus' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `organ-recording-${recordStartTimeRef.current}.webm`;
+            a.click();
+            URL.revokeObjectURL(url);
       };
       
       mediaRecorder.start();
@@ -750,23 +783,83 @@ function App() {
           if (recordingTimerRef.current) {
               clearInterval(recordingTimerRef.current);
           }
-          // Download after stop. Delay slightly to ensure data is available.
-          setTimeout(() => downloadRecording(), 100);
+          // Download both files after stop. Delay slightly to ensure data is available.
+          setTimeout(() => downloadMidiFile(), 100);
       }
   };
 
-    const downloadRecording = () => {
-        if (recordedChunksRef.current.length === 0) {
-            alert('No recording to download');
+    const downloadMidiFile = () => {
+        if (recordedMidiEventsRef.current.length === 0) {
+            alert('No MIDI recording to download');
             return;
         }
-        const blob = new Blob(recordedChunksRef.current, { type: 'audio/webm;codecs=opus' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `organ-recording-${new Date().getTime()}.webm`;
-        a.click();
-        URL.revokeObjectURL(url);
+        
+        try {
+            const Midi = window.Midi;
+            if (!Midi) {
+                alert('MIDI library not loaded');
+                return;
+            }
+            
+            const midi = new Midi();
+            midi.header.setTempo(120);
+            const track = midi.addTrack();
+            
+            // Track time in seconds (MIDI uses seconds, our events are in ms)
+            let lastNoteStarts = {};
+            
+            recordedMidiEventsRef.current.forEach(({ time, data }) => {
+                const [status, data1, data2] = data;
+                const command = status & 0xf0;
+                const midiTime = time / 1000; // Convert ms to seconds
+                
+                if (command === 0x90 && data2 > 0) {
+                    // Note on
+                    lastNoteStarts[data1] = midiTime;
+                } else if (command === 0x80 || (command === 0x90 && data2 === 0)) {
+                    // Note off
+                    const startTime = lastNoteStarts[data1];
+                    if (startTime !== undefined) {
+                        const duration = midiTime - startTime;
+                        track.addNote({
+                            midi: data1,
+                            time: startTime,
+                            duration: Math.max(0.01, duration)
+                        });
+                        delete lastNoteStarts[data1];
+                    }
+                } else if (command === 0xb0) {
+                    // CC - add as control change
+                    track.addCC({
+                        time: midiTime,
+                        number: data1,
+                        value: data2 / 127
+                    });
+                }
+            });
+            
+            // Handle any notes still playing at end
+            const endTime = Math.max(...recordedMidiEventsRef.current.map(e => e.time)) / 1000;
+            Object.entries(lastNoteStarts).forEach(([midiNote, startTime]) => {
+                track.addNote({
+                    midi: Number(midiNote),
+                    time: startTime,
+                    duration: Math.max(0.01, endTime - startTime)
+                });
+            });
+            
+            // Download the MIDI file
+            const blob = new Blob([midi.toArray()], { type: 'audio/midi' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `organ-recording-${recordStartTimeRef.current}.mid`;
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch (err) {
+            alert('Error creating MIDI file: ' + err.message);
+            console.error(err);
+        }
     };
 
     const handleCcValue = (controlId, normalizedValue) => {
@@ -790,6 +883,37 @@ function App() {
           const scaledValue = min + normalizedValue * (max - min);
           setState(scaledValue);
       }
+  };
+
+
+
+  const loadMidiRecording = (file) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+          try {
+              const events = JSON.parse(e.target.result);
+              if (Array.isArray(events)) {
+                  playMidiRecording(events);
+              } else {
+                  alert('Invalid MIDI recording format');
+              }
+          } catch (err) {
+              alert('Error loading MIDI recording: ' + err.message);
+          }
+      };
+      reader.readAsText(file);
+  };
+
+  const playMidiRecording = (events) => {
+      if (!audioCtx.state === 'running') {
+          audioCtx.resume();
+      }
+      events.forEach(({ time, data }) => {
+          setTimeout(() => {
+              const fakeEvent = { data: new Uint8Array(data) };
+              handleMidiMessage(fakeEvent);
+          }, time);
+      });
   };
 
   const startMidiLearn = (controlId) => {
@@ -1028,10 +1152,6 @@ function App() {
       learningControlIdRef.current = learningControlId;
   }, [learningControlId]);
 
-  useEffect(() => {
-      recordedChunksRef.current = recordedChunks;
-  }, [recordedChunks]);
-
   const handleAttack = (e) => setAttack(Number(e.target.value));
   const handleDecay = (e) => setDecay(Number(e.target.value));
   const handleSustain = (e) => setSustain(Number(e.target.value));
@@ -1085,6 +1205,18 @@ function App() {
                 >
                     {isRecording ? `⏹ Stop & Download (${recordingTime}s)` : '⏺ Record'}
                 </button>
+                {/**
+                <button 
+                    className="btn btn-sm btn-outline-primary"
+                    onClick={downloadMidiFile}
+                    disabled={recordedMidiEventsRef.current.length === 0}
+                >
+                    💾 Download MIDI
+                </button>
+                <label className="btn btn-sm btn-outline-secondary mb-0">
+                    📁 Load MIDI
+                    <input type="file" accept=".json" onChange={(e) => e.target.files[0] && loadMidiRecording(e.target.files[0])} style={{display: 'none'}} />
+                </label>**/}
             </div>
         </div>
 
