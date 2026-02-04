@@ -96,6 +96,7 @@ class NoteInstrument {
         };
         this.harmonicsGamma = 0.5;
         this.oddHarmonicsScale = 1.0;
+        this.pitchBend = 0; // in semitones
     }
 
     setAttack(value) {
@@ -158,8 +159,18 @@ class NoteInstrument {
         });
     }
 
+    setPitchBend(semitones) {
+        this.pitchBend = semitones;
+        Object.entries(this.noteOscs).forEach(([note, { osc }]) => {
+            const baseFrequency = 440 * Math.pow(2, (Number(note) - 69) / 12);
+            const bendedFrequency = baseFrequency * Math.pow(2, semitones / 12);
+            osc.frequency.setValueAtTime(bendedFrequency, audioCtx.currentTime);
+        });
+    }
+
     startNote(note, velocity = 1.0) {
-        const noteFrequency = 440 * Math.pow(2, (note - 69) / 12);
+        const baseFrequency = 440 * Math.pow(2, (note - 69) / 12);
+        const noteFrequency = baseFrequency * Math.pow(2, this.pitchBend / 12);
         const noteWavelength = 1 / noteFrequency;
         const attack = Math.max(this.envelope.attack, noteWavelength);
         const existing = this.noteOscs[note];
@@ -410,6 +421,9 @@ function App() {
     const [oddHarmonicsScale, setOddHarmonicsScale] = useState(() => getStoredNumber("oddHarmonicsScale", 0.5));
     const [oddHarmonicsScaleMin, setOddHarmonicsScaleMin] = useState(() => getStoredNumber("oddHarmonicsScaleMin", 0));
     const [oddHarmonicsScaleMax, setOddHarmonicsScaleMax] = useState(() => getStoredNumber("oddHarmonicsScaleMax", 1));
+    const [pitchBend, setPitchBend] = useState(() => getStoredNumber("pitchBend", 0));
+    const [pitchBendMin, setPitchBendMin] = useState(() => getStoredNumber("pitchBendMin", -2));
+    const [pitchBendMax, setPitchBendMax] = useState(() => getStoredNumber("pitchBendMax", 2));
     const [attackMin, setAttackMin] = useState(() => getStoredNumber("attackMin", 0.001));
     const [attackMax, setAttackMax] = useState(() => getStoredNumber("attackMax", 1));
     const [decayMin, setDecayMin] = useState(() => getStoredNumber("decayMin", 0.001));
@@ -597,7 +611,8 @@ function App() {
           harmonicsGammaControl: { state: harmonicsGamma, setState: setHarmonicsGamma, min: harmonicsGammaMin, max: harmonicsGammaMax },
           oddHarmonicsScaleControl: { state: oddHarmonicsScale, setState: setOddHarmonicsScale, min: oddHarmonicsScaleMin, max: oddHarmonicsScaleMax },
           reverbTimeControl: { state: reverbTime, setState: setReverbTime, min: reverbTimeMin, max: reverbTimeMax },
-          reverbDecayControl: { state: reverbDecay, setState: setReverbDecay, min: reverbDecayMin, max: reverbDecayMax }
+          reverbDecayControl: { state: reverbDecay, setState: setReverbDecay, min: reverbDecayMin, max: reverbDecayMax },
+          pitchBendControl: { state: pitchBend, setState: setPitchBend, min: pitchBendMin, max: pitchBendMax }
       };
 
       const control = mapping[controlId];
@@ -728,6 +743,11 @@ function App() {
   }, [oddHarmonicsScale]);
 
   useEffect(() => {
+      localStorage.setItem('pitchBend', pitchBend);
+      instrument.setPitchBend(pitchBend);
+  }, [pitchBend]);
+
+  useEffect(() => {
       localStorage.setItem("attackMin", attackMin);
   }, [attackMin]);
 
@@ -806,6 +826,14 @@ function App() {
   useEffect(() => {
       localStorage.setItem("oddHarmonicsScaleMax", oddHarmonicsScaleMax);
   }, [oddHarmonicsScaleMax]);
+
+  useEffect(() => {
+      localStorage.setItem("pitchBendMin", pitchBendMin);
+  }, [pitchBendMin]);
+
+  useEffect(() => {
+      localStorage.setItem("pitchBendMax", pitchBendMax);
+  }, [pitchBendMax]);
 
   useEffect(() => {
       localStorage.setItem('selectedInputIds', JSON.stringify(selectedInputIds));
@@ -1089,6 +1117,24 @@ function App() {
                             isMidiLearning={learningControlId === 'oddHarmonicsScaleControl'}
                             midiMapping={ccMappings.oddHarmonicsScaleControl}
                             onMidiClear={() => clearMidiBinding('oddHarmonicsScaleControl')}
+                        />
+                        <SliderControl
+                            label="Pitch Bend"
+                            value={pitchBend}
+                            onChange={setPitchBend}
+                            min={pitchBendMin}
+                            max={pitchBendMax}
+                            step={0.01}
+                            numberStep={0.01}
+                            unit=" semitones"
+                            decimals={2}
+                            inputId="pitchBendControl"
+                            onMinChange={setPitchBendMin}
+                            onMaxChange={setPitchBendMax}
+                            onMidiLearn={() => startMidiLearn('pitchBendControl')}
+                            isMidiLearning={learningControlId === 'pitchBendControl'}
+                            midiMapping={ccMappings.pitchBendControl}
+                            onMidiClear={() => clearMidiBinding('pitchBendControl')}
                         />
                         <div className="mb-3">
                             <canvas
