@@ -55,7 +55,11 @@ function createCompressor() {
 }
 
 const compressor = createCompressor();
-compressor.connect(audioCtx.destination);
+const analyser = audioCtx.createAnalyser();
+analyser.fftSize = 4096;
+analyser.smoothingTimeConstant = 0;
+compressor.connect(analyser);
+analyser.connect(audioCtx.destination);
 
 function createInstrumentRootNode(config) {
     const masterGain = audioCtx.createGain();
@@ -455,6 +459,8 @@ function App() {
     const adsrCanvasRef = useRef(null);
     const harmonicsCanvasRef = useRef(null);
     const waveformCanvasRef = useRef(null);
+    const spectrogramCanvasRef = useRef(null);
+    const spectrogramAnimationRef = useRef(null);
 
   const drawAdsr = () => {
       const canvas = adsrCanvasRef.current;
@@ -584,6 +590,51 @@ function App() {
 
       // Draw border
       ctx.strokeRect(0, 0, width, height);
+  };
+
+  const drawSpectrogram = () => {
+      const canvas = spectrogramCanvasRef.current;
+      if (!canvas) {
+          return;
+      }
+      const ctx = canvas.getContext("2d");
+      const width = canvas.width;
+      const height = canvas.height;
+
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+      const nyquist = audioCtx.sampleRate / 2;
+      const minFreq = 27.5; // A0
+      const maxFreq = 4186.01; // C8
+      const logMin = Math.log2(minFreq);
+      const logMax = Math.log2(maxFreq);
+
+      const renderFrame = () => {
+          analyser.getByteFrequencyData(dataArray);
+
+          // Shift existing image left by 1px
+          ctx.drawImage(canvas, -1, 0);
+
+          // Draw the new frequency column on the right
+          for (let i = 0; i < bufferLength; i++) {
+              const freq = (i / bufferLength) * nyquist;
+              if (freq < minFreq || freq > maxFreq) {
+                  continue;
+              }
+              const value = dataArray[i] / 255;
+              const logFreq = Math.log2(freq);
+              const t = (logFreq - logMin) / (logMax - logMin);
+              const y = height - Math.round(t * height);
+              const hue = 220 - value * 220;
+              const light = 20 + value * 60;
+              ctx.fillStyle = `hsl(${hue}, 100%, ${light}%)`;
+              ctx.fillRect(width - 1, y, 1, Math.max(1, height / bufferLength));
+          }
+
+          spectrogramAnimationRef.current = requestAnimationFrame(renderFrame);
+      };
+
+      renderFrame();
   };
 
   const updateMidiInputs = (access) => {
@@ -799,6 +850,16 @@ function App() {
       drawHarmonics();
       drawWaveform();
   }, [harmonicsGamma, evenHarmonicsScale]);
+
+  useEffect(() => {
+      drawSpectrogram();
+      return () => {
+          if (spectrogramAnimationRef.current) {
+              cancelAnimationFrame(spectrogramAnimationRef.current);
+              spectrogramAnimationRef.current = null;
+          }
+      };
+  }, []);
 
   useEffect(() => {
       localStorage.setItem('evenHarmonicsScale', evenHarmonicsScale);
@@ -1213,6 +1274,14 @@ function App() {
                                 width="320"
                                 height="140"
                                 style={{ width: "100%", background: "#f8f9fa", borderRadius: "6px" }}
+                            />
+                        </div>
+                        <div className="mb-3">
+                            <canvas
+                                ref={spectrogramCanvasRef}
+                                width="320"
+                                height="140"
+                                style={{ width: "100%", background: "#000", borderRadius: "6px" }}
                             />
                         </div>
                     </div>
