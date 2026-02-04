@@ -205,7 +205,10 @@ function SliderControl({
     inputId,
     showRangeInputs = true,
     onMinChange,
-    onMaxChange
+    onMaxChange,
+    onMidiLearn,
+    isMidiLearning,
+    midiMapping
 }) {
     const formatValue = (val) => {
         if (Number.isNaN(val)) {
@@ -269,6 +272,22 @@ function SliderControl({
         <div className="form-group mb-3">
             <div className="d-flex align-items-center justify-content-between">
                 <label className="form-label mb-1" htmlFor={inputId}>{label}</label>
+                <div className="d-flex align-items-center gap-2">
+                    {onMidiLearn && (
+                        <button
+                            className={`btn btn-sm ${isMidiLearning ? 'btn-warning' : 'btn-outline-secondary'}`}
+                            onClick={onMidiLearn}
+                            title="Click to learn MIDI control"
+                        >
+                            {isMidiLearning ? '🎵 Learning...' : '🎹'}
+                        </button>
+                    )}
+                    {midiMapping && (
+                        <span className="badge badge-info" title={`CC${midiMapping.cc} CH${midiMapping.channel + 1}`}>
+                            CC{midiMapping.cc}
+                        </span>
+                    )}
+                </div>
             {showRangeInputs && (
                 <>
                     <div className="d-flex align-items-center mr-2">
@@ -357,7 +376,12 @@ function App() {
     const [midiInputs, setMidiInputs] = useState([]);
     const [selectedInputIds, setSelectedInputIds] = useState(() => JSON.parse(localStorage.getItem('selectedInputIds')) || []);
     const [midiStatus, setMidiStatus] = useState("MIDI not enabled");
+    const [learningControlId, setLearningControlId] = useState(null);
+    const [ccMappings, setCcMappings] = useState(() => JSON.parse(localStorage.getItem('ccMappings')) || {});
+    const [learnStatus, setLearnStatus] = useState("");
     const activeInputsRef = useRef(new Map());
+    const learningControlIdRef = useRef(null);
+    const ccMappingsRef = useRef({});
 
   const updateMidiInputs = (access) => {
       const inputs = Array.from(access.inputs.values()).map((input) => ({
@@ -391,17 +415,73 @@ function App() {
   };
 
   const handleMidiMessage = async (event) => {
+      const [status, data1, data2] = event.data;
+      const channel = status & 0x0f;
+      const command = status & 0xf0;
+
+      // log hex message
+      console.log(`MIDI Message: ${[...event.data].map((b) => "0x" + b.toString(16).padStart(2, '0')).join(' ')}`);
+
+      // Handle CC learning mode
+      if (learningControlIdRef.current) {
+          const cc = data1;
+          const newMapping = { ...ccMappingsRef.current };
+          newMapping[learningControlIdRef.current] = { channel, cc };
+          setCcMappings(newMapping);
+          localStorage.setItem('ccMappings', JSON.stringify(newMapping));
+          setLearnStatus(`Learned: CC${cc} on channel ${channel + 1}`);
+          setLearningControlId(null);
+          setTimeout(() => setLearnStatus(""), 2000);
+          return;
+      }
+
+      // Handle note on/off for playing
       if (audioCtx.state !== "running") {
           await audioCtx.resume();
           setIsAudioOn(true);
       }
-      const [status, note, velocity] = event.data;
-      const command = status & 0xf0;
-      if (command === 0x90 && velocity > 0) {
-          instrument.startNote(note, velocity / 127);
-      } else if (command === 0x80 || (command === 0x90 && velocity === 0)) {
-          instrument.stopNote(note);
+      if (command === 0x90) {
+          instrument.startNote(data1, data2 / 127);
+      } else if (command === 0x80) {
+          instrument.stopNote(data1);
       }
+
+      // Handle CC mapping for sliders
+      if (true) {
+          const cc = data1;
+          const value = data2 / 127;
+          for (const [controlId, mapping] of Object.entries(ccMappingsRef.current)) {
+              if (mapping.channel === channel && mapping.cc === cc) {
+                console.log(`Mapped CC${cc} on channel ${channel + 1} to ${controlId} with value ${value}`);
+                  handleCcValue(controlId, value);
+              }
+          }
+      }
+  };
+
+  const handleCcValue = (controlId, normalizedValue) => {
+      const mapping = {
+          attackControl: { state: attack, setState: setAttack, min: attackMin, max: attackMax },
+          decayControl: { state: decay, setState: setDecay, min: decayMin, max: decayMax },
+          sustainControl: { state: sustain, setState: setSustain, min: sustainMin, max: sustainMax },
+          releaseControl: { state: release, setState: setRelease, min: releaseMin, max: releaseMax },
+          volumeControl: { state: volume, setState: setVolume, min: volumeMin, max: volumeMax },
+          reverbMixControl: { state: reverbMix, setState: setReverbMix, min: reverbMixMin, max: reverbMixMax },
+          reverbTimeControl: { state: reverbTime, setState: setReverbTime, min: reverbTimeMin, max: reverbTimeMax },
+          reverbDecayControl: { state: reverbDecay, setState: setReverbDecay, min: reverbDecayMin, max: reverbDecayMax }
+      };
+
+      const control = mapping[controlId];
+      if (control) {
+          const { min, max, setState } = control;
+          const scaledValue = min + normalizedValue * (max - min);
+          setState(scaledValue);
+      }
+  };
+
+  const startMidiLearn = (controlId) => {
+      setLearningControlId(controlId);
+      setLearnStatus(`Learning ${controlId}... Move a MIDI slider`);
   };
 
   const connectSelectedInputs = (midiAccess, ids) => {
@@ -561,6 +641,15 @@ function App() {
       localStorage.setItem('selectedInputIds', JSON.stringify(selectedInputIds));
   }, [selectedInputIds]);
 
+  useEffect(() => {
+      localStorage.setItem('ccMappings', JSON.stringify(ccMappings));
+      ccMappingsRef.current = ccMappings;
+  }, [ccMappings]);
+
+  useEffect(() => {
+      learningControlIdRef.current = learningControlId;
+  }, [learningControlId]);
+
   const handleAttack = (e) => setAttack(Number(e.target.value));
   const handleDecay = (e) => setDecay(Number(e.target.value));
   const handleSustain = (e) => setSustain(Number(e.target.value));
@@ -603,6 +692,7 @@ function App() {
                         </button>
                     </div>
                     <small className="text-muted d-block mb-2">{midiStatus}</small>
+                    {learnStatus && <small className="text-info d-block mb-2">{learnStatus}</small>}
                     <select
                         className="form-control"
                         multiple
@@ -635,6 +725,9 @@ function App() {
                             inputId="attackControl"
                             onMinChange={setAttackMin}
                             onMaxChange={setAttackMax}
+                            onMidiLearn={() => startMidiLearn('attackControl')}
+                            isMidiLearning={learningControlId === 'attackControl'}
+                            midiMapping={ccMappings.attackControl}
                         />
                         <SliderControl
                             label="Decay"
@@ -649,6 +742,9 @@ function App() {
                             inputId="decayControl"
                             onMinChange={setDecayMin}
                             onMaxChange={setDecayMax}
+                            onMidiLearn={() => startMidiLearn('decayControl')}
+                            isMidiLearning={learningControlId === 'decayControl'}
+                            midiMapping={ccMappings.decayControl}
                         />
                         <SliderControl
                             label="Sustain"
@@ -663,6 +759,9 @@ function App() {
                             inputId="sustainControl"
                             onMinChange={setSustainMin}
                             onMaxChange={setSustainMax}
+                            onMidiLearn={() => startMidiLearn('sustainControl')}
+                            isMidiLearning={learningControlId === 'sustainControl'}
+                            midiMapping={ccMappings.sustainControl}
                         />
                         <SliderControl
                             label="Release"
@@ -677,6 +776,9 @@ function App() {
                             inputId="releaseControl"
                             onMinChange={setReleaseMin}
                             onMaxChange={setReleaseMax}
+                            onMidiLearn={() => startMidiLearn('releaseControl')}
+                            isMidiLearning={learningControlId === 'releaseControl'}
+                            midiMapping={ccMappings.releaseControl}
                         />
                     </div>
                     <div className="col-md-6">
@@ -694,6 +796,9 @@ function App() {
                             inputId="volumeControl"
                             onMinChange={setVolumeMin}
                             onMaxChange={setVolumeMax}
+                            onMidiLearn={() => startMidiLearn('volumeControl')}
+                            isMidiLearning={learningControlId === 'volumeControl'}
+                            midiMapping={ccMappings.volumeControl}
                         />
                         <SliderControl
                             label="Reverb Mix"
@@ -708,6 +813,9 @@ function App() {
                             inputId="reverbMixControl"
                             onMinChange={setReverbMixMin}
                             onMaxChange={setReverbMixMax}
+                            onMidiLearn={() => startMidiLearn('reverbMixControl')}
+                            isMidiLearning={learningControlId === 'reverbMixControl'}
+                            midiMapping={ccMappings.reverbMixControl}
                         />
                         <SliderControl
                             label="Reverb Time"
@@ -722,6 +830,9 @@ function App() {
                             inputId="reverbTimeControl"
                             onMinChange={setReverbTimeMin}
                             onMaxChange={setReverbTimeMax}
+                            onMidiLearn={() => startMidiLearn('reverbTimeControl')}
+                            isMidiLearning={learningControlId === 'reverbTimeControl'}
+                            midiMapping={ccMappings.reverbTimeControl}
                         />
                         <SliderControl
                             label="Reverb Decay"
@@ -736,6 +847,9 @@ function App() {
                             inputId="reverbDecayControl"
                             onMinChange={setReverbDecayMin}
                             onMaxChange={setReverbDecayMax}
+                            onMidiLearn={() => startMidiLearn('reverbDecayControl')}
+                            isMidiLearning={learningControlId === 'reverbDecayControl'}
+                            midiMapping={ccMappings.reverbDecayControl}
                         />
                     </div>
                 </div>
