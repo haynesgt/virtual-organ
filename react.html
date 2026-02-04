@@ -28,6 +28,8 @@ const { Dropdown } = ReactBootstrap;
 
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
+const harmonicsCount = 20;
+
 function createReverbImpulse(seconds, decay) {
     const rate = audioCtx.sampleRate;
     const length = Math.max(1, Math.floor(seconds * rate));
@@ -47,8 +49,8 @@ function createCompressor() {
     compressor.threshold.value = -24;  // Start compressing at -24dB
     compressor.knee.value = 30;        // Smooth compression curve
     compressor.ratio.value = 12;       // Strong compression (12:1)
-    compressor.attack.value = 0.01;   // Fast attack (3ms)
-    compressor.release.value = 0.25;   // Medium release (250ms)
+    compressor.attack.value = 0.003;   // Fast attack (3ms)
+    compressor.release.value = 0.5;   // Medium release (500ms)
     return compressor;
 }
 
@@ -95,7 +97,7 @@ class NoteInstrument {
             release: 0.5
         };
         this.harmonicsGamma = 0.5;
-        this.oddHarmonicsScale = 1.0;
+        this.evenHarmonicsScale = 1.0;
         this.pitchBend = 0; // in semitones
     }
 
@@ -131,14 +133,14 @@ class NoteInstrument {
 
     _getPreiodicWave() {
         const gamma = this.harmonicsGamma;
-        const oddScale = this.oddHarmonicsScale;
-        const imag = new Float32Array(10);
+        const oddScale = this.evenHarmonicsScale;
+        const imag = new Float32Array(harmonicsCount);
         for (let i = 1; i < imag.length; i++) {
             const base = Math.pow(gamma, i);
             imag[i] = (i % 2 === 0) ? base * oddScale : base;
         }
         return audioCtx.createPeriodicWave(
-            new Float32Array(10),
+            new Float32Array(harmonicsCount),
             imag,{ disableNormalization: false }
         );
     }
@@ -151,8 +153,8 @@ class NoteInstrument {
         });
     }
 
-    setOddHarmonicsScale(value) {
-        this.oddHarmonicsScale = value;
+    setEvenHarmonicsScale(value) {
+        this.evenHarmonicsScale = value;
         const wave = this._getPreiodicWave();
         Object.values(this.noteOscs).forEach(({ osc }) => {
             osc.setPeriodicWave(wave);
@@ -418,9 +420,9 @@ function App() {
     const [harmonicsGamma, setHarmonicsGamma] = useState(() => getStoredNumber("harmonicsGamma", 0.5));
     const [harmonicsGammaMin, setHarmonicsGammaMin] = useState(() => getStoredNumber("harmonicsGammaMin", 0.1));
     const [harmonicsGammaMax, setHarmonicsGammaMax] = useState(() => getStoredNumber("harmonicsGammaMax", 1));
-    const [oddHarmonicsScale, setOddHarmonicsScale] = useState(() => getStoredNumber("oddHarmonicsScale", 0.5));
-    const [oddHarmonicsScaleMin, setOddHarmonicsScaleMin] = useState(() => getStoredNumber("oddHarmonicsScaleMin", 0));
-    const [oddHarmonicsScaleMax, setOddHarmonicsScaleMax] = useState(() => getStoredNumber("oddHarmonicsScaleMax", 1));
+    const [evenHarmonicsScale, setEvenHarmonicsScale] = useState(() => getStoredNumber("evenHarmonicsScale", 0.5));
+    const [evenHarmonicsScaleMin, setEvenHarmonicsScaleMin] = useState(() => getStoredNumber("evenHarmonicsScaleMin", 0));
+    const [evenHarmonicsScaleMax, setEvenHarmonicsScaleMax] = useState(() => getStoredNumber("evenHarmonicsScaleMax", 1));
     const [pitchBend, setPitchBend] = useState(() => getStoredNumber("pitchBend", 0));
     const [pitchBendMin, setPitchBendMin] = useState(() => getStoredNumber("pitchBendMin", -2));
     const [pitchBendMax, setPitchBendMax] = useState(() => getStoredNumber("pitchBendMax", 2));
@@ -452,6 +454,7 @@ function App() {
     const ccMappingsRef = useRef({});
     const adsrCanvasRef = useRef(null);
     const harmonicsCanvasRef = useRef(null);
+    const waveformCanvasRef = useRef(null);
 
   const drawAdsr = () => {
       const canvas = adsrCanvasRef.current;
@@ -505,13 +508,12 @@ function App() {
       const height = canvas.height;
       ctx.clearRect(0, 0, width, height);
 
-      const harmonicsCount = 10;
       const barWidth = width / harmonicsCount;
-      const maxValue = Math.max(1, oddHarmonicsScale, harmonicsGamma);
+    const maxValue = Math.max(1, evenHarmonicsScale, harmonicsGamma);
 
       for (let i = 0; i < harmonicsCount; i++) {
           const base = Math.pow(harmonicsGamma, i);
-          const value = (i % 2 === 1) ? base * oddHarmonicsScale : base;
+          const value = (i % 2 === 1) ? base * evenHarmonicsScale : base;
           const barHeight = (value / maxValue) * (height * 0.9);
           const x = i * barWidth;
           const y = height - barHeight;
@@ -521,6 +523,66 @@ function App() {
 
       ctx.strokeStyle = "#dee2e6";
       ctx.lineWidth = 1;
+      ctx.strokeRect(0, 0, width, height);
+  };
+
+  const drawWaveform = () => {
+      const canvas = waveformCanvasRef.current;
+      if (!canvas) {
+          return;
+      }
+      const ctx = canvas.getContext("2d");
+      const width = canvas.width;
+      const height = canvas.height;
+      ctx.clearRect(0, 0, width, height);
+
+      // Generate waveform from harmonics using same algorithm as _getPeriodicWave
+      const samples = 512;
+      const waveData = new Float32Array(samples);
+      
+      for (let i = 0; i < samples; i++) {
+          const t = (i / samples) * 2 * Math.PI;
+          let sum = 0;
+          for (let h = 1; h < harmonicsCount; h++) {
+              const base = Math.pow(harmonicsGamma, h);
+              const amplitude = (h % 2 === 0) ? base * evenHarmonicsScale : base;
+              sum += amplitude * Math.sin(h * t);
+          }
+          waveData[i] = sum;
+      }
+
+      // Normalize waveform
+      const maxAbs = Math.max(...waveData.map(Math.abs));
+      if (maxAbs > 0) {
+          for (let i = 0; i < samples; i++) {
+              waveData[i] /= maxAbs;
+          }
+      }
+
+      // Draw waveform
+      ctx.strokeStyle = "#007bff";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let i = 0; i < samples; i++) {
+          const x = (i / samples) * width;
+          const y = height / 2 - waveData[i] * (height * 0.4);
+          if (i === 0) {
+              ctx.moveTo(x, y);
+          } else {
+              ctx.lineTo(x, y);
+          }
+      }
+      ctx.stroke();
+
+      // Draw center line
+      ctx.strokeStyle = "#dee2e6";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, height / 2);
+      ctx.lineTo(width, height / 2);
+      ctx.stroke();
+
+      // Draw border
       ctx.strokeRect(0, 0, width, height);
   };
 
@@ -609,7 +671,7 @@ function App() {
           volumeControl: { state: volume, setState: setVolume, min: volumeMin, max: volumeMax },
           reverbMixControl: { state: reverbMix, setState: setReverbMix, min: reverbMixMin, max: reverbMixMax },
           harmonicsGammaControl: { state: harmonicsGamma, setState: setHarmonicsGamma, min: harmonicsGammaMin, max: harmonicsGammaMax },
-          oddHarmonicsScaleControl: { state: oddHarmonicsScale, setState: setOddHarmonicsScale, min: oddHarmonicsScaleMin, max: oddHarmonicsScaleMax },
+          evenHarmonicsScaleControl: { state: evenHarmonicsScale, setState: setEvenHarmonicsScale, min: evenHarmonicsScaleMin, max: evenHarmonicsScaleMax },
           reverbTimeControl: { state: reverbTime, setState: setReverbTime, min: reverbTimeMin, max: reverbTimeMax },
           reverbDecayControl: { state: reverbDecay, setState: setReverbDecay, min: reverbDecayMin, max: reverbDecayMax },
           pitchBendControl: { state: pitchBend, setState: setPitchBend, min: pitchBendMin, max: pitchBendMax }
@@ -735,12 +797,13 @@ function App() {
 
   useEffect(() => {
       drawHarmonics();
-  }, [harmonicsGamma, oddHarmonicsScale]);
+      drawWaveform();
+  }, [harmonicsGamma, evenHarmonicsScale]);
 
   useEffect(() => {
-      localStorage.setItem('oddHarmonicsScale', oddHarmonicsScale);
-      instrument.setOddHarmonicsScale(oddHarmonicsScale);
-  }, [oddHarmonicsScale]);
+      localStorage.setItem('evenHarmonicsScale', evenHarmonicsScale);
+      instrument.setEvenHarmonicsScale(evenHarmonicsScale);
+  }, [evenHarmonicsScale]);
 
   useEffect(() => {
       localStorage.setItem('pitchBend', pitchBend);
@@ -820,12 +883,12 @@ function App() {
   }, [harmonicsGammaMax]);
 
   useEffect(() => {
-      localStorage.setItem("oddHarmonicsScaleMin", oddHarmonicsScaleMin);
-  }, [oddHarmonicsScaleMin]);
+      localStorage.setItem("evenHarmonicsScaleMin", evenHarmonicsScaleMin);
+  }, [evenHarmonicsScaleMin]);
 
   useEffect(() => {
-      localStorage.setItem("oddHarmonicsScaleMax", oddHarmonicsScaleMax);
-  }, [oddHarmonicsScaleMax]);
+      localStorage.setItem("evenHarmonicsScaleMax", evenHarmonicsScaleMax);
+  }, [evenHarmonicsScaleMax]);
 
   useEffect(() => {
       localStorage.setItem("pitchBendMin", pitchBendMin);
@@ -1101,22 +1164,22 @@ function App() {
                             onMidiClear={() => clearMidiBinding('harmonicsGammaControl')}
                         />
                         <SliderControl
-                            label="Odd Harmonics Scale"
-                            value={oddHarmonicsScale}
-                            onChange={setOddHarmonicsScale}
-                            min={oddHarmonicsScaleMin}
-                            max={oddHarmonicsScaleMax}
+                            label="Even Harmonics Scale"
+                            value={evenHarmonicsScale}
+                            onChange={setEvenHarmonicsScale}
+                            min={evenHarmonicsScaleMin}
+                            max={evenHarmonicsScaleMax}
                             step={0.01}
                             numberStep={0.01}
                             unit=""
                             decimals={2}
-                            inputId="oddHarmonicsScaleControl"
-                            onMinChange={setOddHarmonicsScaleMin}
-                            onMaxChange={setOddHarmonicsScaleMax}
-                            onMidiLearn={() => startMidiLearn('oddHarmonicsScaleControl')}
-                            isMidiLearning={learningControlId === 'oddHarmonicsScaleControl'}
-                            midiMapping={ccMappings.oddHarmonicsScaleControl}
-                            onMidiClear={() => clearMidiBinding('oddHarmonicsScaleControl')}
+                            inputId="evenHarmonicsScaleControl"
+                            onMinChange={setEvenHarmonicsScaleMin}
+                            onMaxChange={setEvenHarmonicsScaleMax}
+                            onMidiLearn={() => startMidiLearn('evenHarmonicsScaleControl')}
+                            isMidiLearning={learningControlId === 'evenHarmonicsScaleControl'}
+                            midiMapping={ccMappings.evenHarmonicsScaleControl}
+                            onMidiClear={() => clearMidiBinding('evenHarmonicsScaleControl')}
                         />
                         <SliderControl
                             label="Pitch Bend"
@@ -1139,6 +1202,14 @@ function App() {
                         <div className="mb-3">
                             <canvas
                                 ref={harmonicsCanvasRef}
+                                width="320"
+                                height="140"
+                                style={{ width: "100%", background: "#f8f9fa", borderRadius: "6px" }}
+                            />
+                        </div>
+                        <div className="mb-3">
+                            <canvas
+                                ref={waveformCanvasRef}
                                 width="320"
                                 height="140"
                                 style={{ width: "100%", background: "#f8f9fa", borderRadius: "6px" }}
