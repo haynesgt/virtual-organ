@@ -43,6 +43,17 @@ function useStateWithRef(initialValue) {
     return [state, setState, ref];
 }
 
+// Helper hook for localStorage-backed numeric state
+function useLocalStorageNumber(key, fallbackValue) {
+    const [value, setValue] = useState(() => getStoredNumber(key, fallbackValue));
+    
+    useEffect(() => {
+        localStorage.setItem(key, value);
+    }, [key, value]);
+    
+    return [value, setValue];
+}
+
 function createReverbImpulse(seconds, decay) {
     const rate = audioCtx.sampleRate;
     const length = Math.max(1, Math.floor(seconds * rate));
@@ -428,39 +439,39 @@ function SliderControl({
 function App() {
     const [isAudioOn, setIsAudioOn] = useState(audioCtx.state === "running");
     const [enableButtonClicked, setEnableButtonClicked] = useState(false);
-    const [attack, setAttack] = useState(() => getStoredNumber("attack", 0.01));
-    const [decay, setDecay] = useState(() => getStoredNumber("decay", 0.2));
-    const [sustain, setSustain] = useState(() => getStoredNumber("sustain", 0.7));
-    const [release, setRelease] = useState(() => getStoredNumber("release", 0.5));
-    const [volume, setVolume] = useState(() => getStoredNumber("volume", 0.7));
-    const [reverbMix, setReverbMix] = useState(() => getStoredNumber("reverbMix", 0.3));
-    const [reverbTime, setReverbTime] = useState(() => getStoredNumber("reverbTime", 2));
-    const [reverbDecay, setReverbDecay] = useState(() => getStoredNumber("reverbDecay", 2));
-    const [harmonicsGamma, setHarmonicsGamma] = useState(() => getStoredNumber("harmonicsGamma", 0.5));
-    const [harmonicsGammaMin, setHarmonicsGammaMin] = useState(() => getStoredNumber("harmonicsGammaMin", 0.1));
-    const [harmonicsGammaMax, setHarmonicsGammaMax] = useState(() => getStoredNumber("harmonicsGammaMax", 1));
-    const [evenHarmonicsScale, setEvenHarmonicsScale] = useState(() => getStoredNumber("evenHarmonicsScale", 0.5));
-    const [evenHarmonicsScaleMin, setEvenHarmonicsScaleMin] = useState(() => getStoredNumber("evenHarmonicsScaleMin", 0));
-    const [evenHarmonicsScaleMax, setEvenHarmonicsScaleMax] = useState(() => getStoredNumber("evenHarmonicsScaleMax", 1));
-    const [pitchBend, setPitchBend] = useState(() => getStoredNumber("pitchBend", 0));
-    const [pitchBendMin, setPitchBendMin] = useState(() => getStoredNumber("pitchBendMin", -2));
-    const [pitchBendMax, setPitchBendMax] = useState(() => getStoredNumber("pitchBendMax", 2));
-    const [attackMin, setAttackMin] = useState(() => getStoredNumber("attackMin", 0.001));
-    const [attackMax, setAttackMax] = useState(() => getStoredNumber("attackMax", 1));
-    const [decayMin, setDecayMin] = useState(() => getStoredNumber("decayMin", 0.001));
-    const [decayMax, setDecayMax] = useState(() => getStoredNumber("decayMax", 2));
-    const [sustainMin, setSustainMin] = useState(() => getStoredNumber("sustainMin", 0));
-    const [sustainMax, setSustainMax] = useState(() => getStoredNumber("sustainMax", 1));
-    const [releaseMin, setReleaseMin] = useState(() => getStoredNumber("releaseMin", 0.001));
-    const [releaseMax, setReleaseMax] = useState(() => getStoredNumber("releaseMax", 2));
-    const [volumeMin, setVolumeMin] = useState(() => getStoredNumber("volumeMin", 0));
-    const [volumeMax, setVolumeMax] = useState(() => getStoredNumber("volumeMax", 1));
-    const [reverbMixMin, setReverbMixMin] = useState(() => getStoredNumber("reverbMixMin", 0));
-    const [reverbMixMax, setReverbMixMax] = useState(() => getStoredNumber("reverbMixMax", 1));
-    const [reverbTimeMin, setReverbTimeMin] = useState(() => getStoredNumber("reverbTimeMin", 0.1));
-    const [reverbTimeMax, setReverbTimeMax] = useState(() => getStoredNumber("reverbTimeMax", 6));
-    const [reverbDecayMin, setReverbDecayMin] = useState(() => getStoredNumber("reverbDecayMin", 0.5));
-    const [reverbDecayMax, setReverbDecayMax] = useState(() => getStoredNumber("reverbDecayMax", 6));
+    const [attack, setAttack] = useLocalStorageNumber("attack", 0.01);
+    const [decay, setDecay] = useLocalStorageNumber("decay", 0.2);
+    const [sustain, setSustain] = useLocalStorageNumber("sustain", 0.7);
+    const [release, setRelease] = useLocalStorageNumber("release", 0.5);
+    const [volume, setVolume] = useLocalStorageNumber("volume", 0.7);
+    const [reverbMix, setReverbMix] = useLocalStorageNumber("reverbMix", 0.3);
+    const [reverbTime, setReverbTime] = useLocalStorageNumber("reverbTime", 2);
+    const [reverbDecay, setReverbDecay] = useLocalStorageNumber("reverbDecay", 2);
+    const [harmonicsGamma, setHarmonicsGamma] = useLocalStorageNumber("harmonicsGamma", 0.5);
+    const [harmonicsGammaMin, setHarmonicsGammaMin] = useLocalStorageNumber("harmonicsGammaMin", 0.1);
+    const [harmonicsGammaMax, setHarmonicsGammaMax] = useLocalStorageNumber("harmonicsGammaMax", 1);
+    const [evenHarmonicsScale, setEvenHarmonicsScale] = useLocalStorageNumber("evenHarmonicsScale", 0.5);
+    const [evenHarmonicsScaleMin, setEvenHarmonicsScaleMin] = useLocalStorageNumber("evenHarmonicsScaleMin", 0);
+    const [evenHarmonicsScaleMax, setEvenHarmonicsScaleMax] = useLocalStorageNumber("evenHarmonicsScaleMax", 1);
+    const [pitchBend, setPitchBend] = useLocalStorageNumber("pitchBend", 0);
+    const [pitchBendMin, setPitchBendMin] = useLocalStorageNumber("pitchBendMin", -2);
+    const [pitchBendMax, setPitchBendMax] = useLocalStorageNumber("pitchBendMax", 2);
+    const [attackMin, setAttackMin] = useLocalStorageNumber("attackMin", 0.001);
+    const [attackMax, setAttackMax] = useLocalStorageNumber("attackMax", 1);
+    const [decayMin, setDecayMin] = useLocalStorageNumber("decayMin", 0.001);
+    const [decayMax, setDecayMax] = useLocalStorageNumber("decayMax", 2);
+    const [sustainMin, setSustainMin] = useLocalStorageNumber("sustainMin", 0);
+    const [sustainMax, setSustainMax] = useLocalStorageNumber("sustainMax", 1);
+    const [releaseMin, setReleaseMin] = useLocalStorageNumber("releaseMin", 0.001);
+    const [releaseMax, setReleaseMax] = useLocalStorageNumber("releaseMax", 2);
+    const [volumeMin, setVolumeMin] = useLocalStorageNumber("volumeMin", 0);
+    const [volumeMax, setVolumeMax] = useLocalStorageNumber("volumeMax", 1);
+    const [reverbMixMin, setReverbMixMin] = useLocalStorageNumber("reverbMixMin", 0);
+    const [reverbMixMax, setReverbMixMax] = useLocalStorageNumber("reverbMixMax", 1);
+    const [reverbTimeMin, setReverbTimeMin] = useLocalStorageNumber("reverbTimeMin", 0.1);
+    const [reverbTimeMax, setReverbTimeMax] = useLocalStorageNumber("reverbTimeMax", 6);
+    const [reverbDecayMin, setReverbDecayMin] = useLocalStorageNumber("reverbDecayMin", 0.5);
+    const [reverbDecayMax, setReverbDecayMax] = useLocalStorageNumber("reverbDecayMax", 6);
     const [midiAccess, setMidiAccess] = useState(null);
     const [midiInputs, setMidiInputs] = useState([]);
     const [selectedInputIds, setSelectedInputIds] = useState(() => JSON.parse(localStorage.getItem('selectedInputIds')) || []);
@@ -982,43 +993,34 @@ function App() {
     }, []);
 
   useEffect(() => {
-      localStorage.setItem('attack', attack);
       instrument.setAttack(attack);
   }, [attack]);
 
   useEffect(() => {
-      localStorage.setItem('decay', decay);
       instrument.setDecay(decay);
   }, [decay]);
 
   useEffect(() => {
-      localStorage.setItem('sustain', sustain);
       instrument.setSustain(sustain);
   }, [sustain]);
 
   useEffect(() => {
-      localStorage.setItem('release', release);
       instrument.setRelease(release);
   }, [release]);
 
   useEffect(() => {
-      localStorage.setItem('volume', volume);
       instrument.setVolume(volume);
   }, [volume]);
 
   useEffect(() => {
-      localStorage.setItem('reverbMix', reverbMix);
       instrument.setReverbMix(reverbMix);
   }, [reverbMix]);
 
   useEffect(() => {
-      localStorage.setItem('reverbTime', reverbTime);
-      localStorage.setItem('reverbDecay', reverbDecay);
       instrument.setReverbTime(reverbTime, reverbDecay);
   }, [reverbTime, reverbDecay]);
 
   useEffect(() => {
-      localStorage.setItem('harmonicsGamma', harmonicsGamma);
       instrument.setHarmonicsGamma(harmonicsGamma);
   }, [harmonicsGamma]);
 
@@ -1042,102 +1044,12 @@ function App() {
   }, []);
 
   useEffect(() => {
-      localStorage.setItem('evenHarmonicsScale', evenHarmonicsScale);
       instrument.setEvenHarmonicsScale(evenHarmonicsScale);
   }, [evenHarmonicsScale]);
 
   useEffect(() => {
-      localStorage.setItem('pitchBend', pitchBend);
       instrument.setPitchBend(pitchBend);
   }, [pitchBend]);
-
-  useEffect(() => {
-      localStorage.setItem("attackMin", attackMin);
-  }, [attackMin]);
-
-  useEffect(() => {
-      localStorage.setItem("attackMax", attackMax);
-  }, [attackMax]);
-
-  useEffect(() => {
-      localStorage.setItem("decayMin", decayMin);
-  }, [decayMin]);
-
-  useEffect(() => {
-      localStorage.setItem("decayMax", decayMax);
-  }, [decayMax]);
-
-  useEffect(() => {
-      localStorage.setItem("sustainMin", sustainMin);
-  }, [sustainMin]);
-
-  useEffect(() => {
-      localStorage.setItem("sustainMax", sustainMax);
-  }, [sustainMax]);
-
-  useEffect(() => {
-      localStorage.setItem("releaseMin", releaseMin);
-  }, [releaseMin]);
-
-  useEffect(() => {
-      localStorage.setItem("releaseMax", releaseMax);
-  }, [releaseMax]);
-
-  useEffect(() => {
-      localStorage.setItem("volumeMin", volumeMin);
-  }, [volumeMin]);
-
-  useEffect(() => {
-      localStorage.setItem("volumeMax", volumeMax);
-  }, [volumeMax]);
-
-  useEffect(() => {
-      localStorage.setItem("reverbMixMin", reverbMixMin);
-  }, [reverbMixMin]);
-
-  useEffect(() => {
-      localStorage.setItem("reverbMixMax", reverbMixMax);
-  }, [reverbMixMax]);
-
-  useEffect(() => {
-      localStorage.setItem("reverbTimeMin", reverbTimeMin);
-  }, [reverbTimeMin]);
-
-  useEffect(() => {
-      localStorage.setItem("reverbTimeMax", reverbTimeMax);
-  }, [reverbTimeMax]);
-
-  useEffect(() => {
-      localStorage.setItem("reverbDecayMin", reverbDecayMin);
-  }, [reverbDecayMin]);
-
-  useEffect(() => {
-      localStorage.setItem("reverbDecayMax", reverbDecayMax);
-  }, [reverbDecayMax]);
-
-  useEffect(() => {
-      localStorage.setItem("harmonicsGammaMin", harmonicsGammaMin);
-  }, [harmonicsGammaMin]);
-
-  useEffect(() => {
-      localStorage.setItem("harmonicsGammaMax", harmonicsGammaMax);
-  }, [harmonicsGammaMax]);
-
-  useEffect(() => {
-      localStorage.setItem("evenHarmonicsScaleMin", evenHarmonicsScaleMin);
-  }, [evenHarmonicsScaleMin]);
-
-  useEffect(() => {
-      localStorage.setItem("evenHarmonicsScaleMax", evenHarmonicsScaleMax);
-  }, [evenHarmonicsScaleMax]);
-
-  useEffect(() => {
-      localStorage.setItem("pitchBendMin", pitchBendMin);
-  }, [pitchBendMin]);
-
-  useEffect(() => {
-      localStorage.setItem("pitchBendMax", pitchBendMax);
-  }, [pitchBendMax]);
 
   useEffect(() => {
       localStorage.setItem('selectedInputIds', JSON.stringify(selectedInputIds));
