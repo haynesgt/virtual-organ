@@ -95,6 +95,7 @@ class NoteInstrument {
             release: 0.5
         };
         this.harmonicsGamma = 0.5;
+        this.oddHarmonicsScale = 1.0;
     }
 
     setAttack(value) {
@@ -129,9 +130,11 @@ class NoteInstrument {
 
     _getPreiodicWave() {
         const gamma = this.harmonicsGamma;
+        const oddScale = this.oddHarmonicsScale;
         const imag = new Float32Array(10);
         for (let i = 1; i < imag.length; i++) {
-            imag[i] = Math.pow(gamma, i);
+            const base = Math.pow(gamma, i);
+            imag[i] = (i % 2 === 1) ? base * oddScale : base;
         }
         return audioCtx.createPeriodicWave(
             new Float32Array(10),
@@ -141,6 +144,14 @@ class NoteInstrument {
 
     setHarmonicsGamma(value) {
         this.harmonicsGamma = value;
+        const wave = this._getPreiodicWave();
+        Object.values(this.noteOscs).forEach(({ osc }) => {
+            osc.setPeriodicWave(wave);
+        });
+    }
+
+    setOddHarmonicsScale(value) {
+        this.oddHarmonicsScale = value;
         const wave = this._getPreiodicWave();
         Object.values(this.noteOscs).forEach(({ osc }) => {
             osc.setPeriodicWave(wave);
@@ -374,6 +385,7 @@ function SliderControl({
 
 function App() {
     const [isAudioOn, setIsAudioOn] = useState(audioCtx.state === "running");
+    const [enableButtonClicked, setEnableButtonClicked] = useState(false);
     const [attack, setAttack] = useState(() => getStoredNumber("attack", 0.01));
     const [decay, setDecay] = useState(() => getStoredNumber("decay", 0.2));
     const [sustain, setSustain] = useState(() => getStoredNumber("sustain", 0.7));
@@ -385,6 +397,9 @@ function App() {
     const [harmonicsGamma, setHarmonicsGamma] = useState(() => getStoredNumber("harmonicsGamma", 0.5));
     const [harmonicsGammaMin, setHarmonicsGammaMin] = useState(() => getStoredNumber("harmonicsGammaMin", 0.1));
     const [harmonicsGammaMax, setHarmonicsGammaMax] = useState(() => getStoredNumber("harmonicsGammaMax", 1));
+    const [oddHarmonicsScale, setOddHarmonicsScale] = useState(() => getStoredNumber("oddHarmonicsScale", 0.5));
+    const [oddHarmonicsScaleMin, setOddHarmonicsScaleMin] = useState(() => getStoredNumber("oddHarmonicsScaleMin", 0));
+    const [oddHarmonicsScaleMax, setOddHarmonicsScaleMax] = useState(() => getStoredNumber("oddHarmonicsScaleMax", 1));
     const [attackMin, setAttackMin] = useState(() => getStoredNumber("attackMin", 0.001));
     const [attackMax, setAttackMax] = useState(() => getStoredNumber("attackMax", 1));
     const [decayMin, setDecayMin] = useState(() => getStoredNumber("decayMin", 0.001));
@@ -497,6 +512,7 @@ function App() {
           volumeControl: { state: volume, setState: setVolume, min: volumeMin, max: volumeMax },
           reverbMixControl: { state: reverbMix, setState: setReverbMix, min: reverbMixMin, max: reverbMixMax },
           harmonicsGammaControl: { state: harmonicsGamma, setState: setHarmonicsGamma, min: harmonicsGammaMin, max: harmonicsGammaMax },
+          oddHarmonicsScaleControl: { state: oddHarmonicsScale, setState: setOddHarmonicsScale, min: oddHarmonicsScaleMin, max: oddHarmonicsScaleMax },
           reverbTimeControl: { state: reverbTime, setState: setReverbTime, min: reverbTimeMin, max: reverbTimeMax },
           reverbDecayControl: { state: reverbDecay, setState: setReverbDecay, min: reverbDecayMin, max: reverbDecayMax }
       };
@@ -609,6 +625,11 @@ function App() {
   }, [harmonicsGamma]);
 
   useEffect(() => {
+      localStorage.setItem('oddHarmonicsScale', oddHarmonicsScale);
+      instrument.setOddHarmonicsScale(oddHarmonicsScale);
+  }, [oddHarmonicsScale]);
+
+  useEffect(() => {
       localStorage.setItem("attackMin", attackMin);
   }, [attackMin]);
 
@@ -681,6 +702,14 @@ function App() {
   }, [harmonicsGammaMax]);
 
   useEffect(() => {
+      localStorage.setItem("oddHarmonicsScaleMin", oddHarmonicsScaleMin);
+  }, [oddHarmonicsScaleMin]);
+
+  useEffect(() => {
+      localStorage.setItem("oddHarmonicsScaleMax", oddHarmonicsScaleMax);
+  }, [oddHarmonicsScaleMax]);
+
+  useEffect(() => {
       localStorage.setItem('selectedInputIds', JSON.stringify(selectedInputIds));
   }, [selectedInputIds]);
 
@@ -707,19 +736,35 @@ function App() {
           await audioCtx.resume();
       }
       setIsAudioOn(audioCtx.state === "running");
+      setEnableButtonClicked(true);
   };
 
   return (
     <div className="container py-4">
-        <div className="mb-4">
-            <button 
-                className="btn btn-success btn-lg btn-block"
-                onClick={handleTurnOn}
-                style={{ fontSize: "24px", padding: "20px" }}
+        {!enableButtonClicked && (
+            <div 
+                style={{
+                    position: "fixed",
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: "rgba(0, 0, 0, 0.8)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    zIndex: 9999
+                }}
             >
-                {isAudioOn ? "✓ Enabled" : "Click to Enable"}
-            </button>
-        </div>
+                <button 
+                    className="btn btn-success btn-lg"
+                    onClick={handleTurnOn}
+                    style={{ fontSize: "32px", padding: "30px 60px", width: "50%", height: "50%" }}
+                >
+                    Click to Enable
+                </button>
+            </div>
+        )}
 
         <div className="d-flex align-items-center justify-content-between mb-3">
             <h1 className="h3 mb-0">React Audio Instrument</h1>
@@ -876,6 +921,23 @@ function App() {
                             onMidiLearn={() => startMidiLearn('harmonicsGammaControl')}
                             isMidiLearning={learningControlId === 'harmonicsGammaControl'}
                             midiMapping={ccMappings.harmonicsGammaControl}
+                        />
+                        <SliderControl
+                            label="Odd Harmonics Scale"
+                            value={oddHarmonicsScale}
+                            onChange={setOddHarmonicsScale}
+                            min={oddHarmonicsScaleMin}
+                            max={oddHarmonicsScaleMax}
+                            step={0.01}
+                            numberStep={0.01}
+                            unit=""
+                            decimals={2}
+                            inputId="oddHarmonicsScaleControl"
+                            onMinChange={setOddHarmonicsScaleMin}
+                            onMaxChange={setOddHarmonicsScaleMax}
+                            onMidiLearn={() => startMidiLearn('oddHarmonicsScaleControl')}
+                            isMidiLearning={learningControlId === 'oddHarmonicsScaleControl'}
+                            midiMapping={ccMappings.oddHarmonicsScaleControl}
                         />
                         <SliderControl
                             label="Reverb Time"
