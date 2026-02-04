@@ -94,6 +94,7 @@ class NoteInstrument {
             sustain: 0.7,
             release: 0.5
         };
+        this.harmonicsGamma = 0.5;
     }
 
     setAttack(value) {
@@ -126,26 +127,51 @@ class NoteInstrument {
         convolver.buffer = createReverbImpulse(seconds, decay);
     }
 
+    _getPreiodicWave() {
+        const gamma = this.harmonicsGamma;
+        const imag = new Float32Array(10);
+        for (let i = 1; i < imag.length; i++) {
+            imag[i] = Math.pow(gamma, i);
+        }
+        return audioCtx.createPeriodicWave(
+            new Float32Array(10),
+            imag,{ disableNormalization: false }
+        );
+    }
+
+    setHarmonicsGamma(value) {
+        this.harmonicsGamma = value;
+        const wave = this._getPreiodicWave();
+        Object.values(this.noteOscs).forEach(({ osc }) => {
+            osc.setPeriodicWave(wave);
+        });
+    }
+
     startNote(note, velocity = 1.0) {
         const noteFrequency = 440 * Math.pow(2, (note - 69) / 12);
         const noteWavelength = 1 / noteFrequency;
         const attack = Math.max(this.envelope.attack, noteWavelength);
-        if (this.noteOscs[note]) {
-            const existing = this.noteOscs[note];
-            existing.gainNode.gain.cancelScheduledValues(audioCtx.currentTime);
-            existing.gainNode.gain.setValueAtTime(existing.gainNode.gain.value, audioCtx.currentTime);
-            existing.gainNode.gain.linearRampToValueAtTime(velocity, audioCtx.currentTime + attack);
-            existing.gainNode.gain.linearRampToValueAtTime(velocity * this.envelope.sustain, audioCtx.currentTime + attack + this.envelope.decay);
-            return;
+        const existing = this.noteOscs[note];
+        if (existing) {
+            if (existing.gainNode.gain.value === 0) {
+                existing.osc.stop();
+                existing.osc.disconnect();
+                existing.gainNode.disconnect();
+                delete this.noteOscs[note];
+            } else {
+                existing.gainNode.gain.cancelScheduledValues(audioCtx.currentTime);
+                existing.gainNode.gain.setValueAtTime(existing.gainNode.gain.value, audioCtx.currentTime);
+                existing.gainNode.gain.linearRampToValueAtTime(velocity, audioCtx.currentTime + attack);
+                existing.gainNode.gain.linearRampToValueAtTime(velocity * this.envelope.sustain, audioCtx.currentTime + attack + this.envelope.decay);
+                return;
+            }
         }
         const osc = audioCtx.createOscillator();
         const gainNode = audioCtx.createGain();
 
         osc.type = 'sine';
-        osc.setPeriodicWave(audioCtx.createPeriodicWave(
-            new Float32Array([0, 0, 0, 0, 0]),
-            new Float32Array([1, 0.5, 0.25, 0.125, 0.0625])
-        ));
+        const wave = this._getPreiodicWave();
+        osc.setPeriodicWave(wave);
         osc.frequency.value = noteFrequency;
 
         const now = audioCtx.currentTime;
@@ -169,7 +195,7 @@ class NoteInstrument {
             existing.gainNode.gain.setValueAtTime(existing.gainNode.gain.value, now);
             existing.gainNode.gain.linearRampToValueAtTime(0, now + this.envelope.release);
             setTimeout(() => {
-                if (existing.gainNode.gain === 0) {
+                if (existing.gainNode.gain.value === 0) {
                     existing.osc.stop();
                     existing.osc.disconnect();
                     existing.gainNode.disconnect();
@@ -356,6 +382,9 @@ function App() {
     const [reverbMix, setReverbMix] = useState(() => getStoredNumber("reverbMix", 0.3));
     const [reverbTime, setReverbTime] = useState(() => getStoredNumber("reverbTime", 2));
     const [reverbDecay, setReverbDecay] = useState(() => getStoredNumber("reverbDecay", 2));
+    const [harmonicsGamma, setHarmonicsGamma] = useState(() => getStoredNumber("harmonicsGamma", 0.5));
+    const [harmonicsGammaMin, setHarmonicsGammaMin] = useState(() => getStoredNumber("harmonicsGammaMin", 0.1));
+    const [harmonicsGammaMax, setHarmonicsGammaMax] = useState(() => getStoredNumber("harmonicsGammaMax", 1));
     const [attackMin, setAttackMin] = useState(() => getStoredNumber("attackMin", 0.001));
     const [attackMax, setAttackMax] = useState(() => getStoredNumber("attackMax", 1));
     const [decayMin, setDecayMin] = useState(() => getStoredNumber("decayMin", 0.001));
@@ -467,6 +496,7 @@ function App() {
           releaseControl: { state: release, setState: setRelease, min: releaseMin, max: releaseMax },
           volumeControl: { state: volume, setState: setVolume, min: volumeMin, max: volumeMax },
           reverbMixControl: { state: reverbMix, setState: setReverbMix, min: reverbMixMin, max: reverbMixMax },
+          harmonicsGammaControl: { state: harmonicsGamma, setState: setHarmonicsGamma, min: harmonicsGammaMin, max: harmonicsGammaMax },
           reverbTimeControl: { state: reverbTime, setState: setReverbTime, min: reverbTimeMin, max: reverbTimeMax },
           reverbDecayControl: { state: reverbDecay, setState: setReverbDecay, min: reverbDecayMin, max: reverbDecayMax }
       };
@@ -574,6 +604,11 @@ function App() {
   }, [reverbTime, reverbDecay]);
 
   useEffect(() => {
+      localStorage.setItem('harmonicsGamma', harmonicsGamma);
+      instrument.setHarmonicsGamma(harmonicsGamma);
+  }, [harmonicsGamma]);
+
+  useEffect(() => {
       localStorage.setItem("attackMin", attackMin);
   }, [attackMin]);
 
@@ -636,6 +671,14 @@ function App() {
   useEffect(() => {
       localStorage.setItem("reverbDecayMax", reverbDecayMax);
   }, [reverbDecayMax]);
+
+  useEffect(() => {
+      localStorage.setItem("harmonicsGammaMin", harmonicsGammaMin);
+  }, [harmonicsGammaMin]);
+
+  useEffect(() => {
+      localStorage.setItem("harmonicsGammaMax", harmonicsGammaMax);
+  }, [harmonicsGammaMax]);
 
   useEffect(() => {
       localStorage.setItem('selectedInputIds', JSON.stringify(selectedInputIds));
@@ -816,6 +859,23 @@ function App() {
                             onMidiLearn={() => startMidiLearn('reverbMixControl')}
                             isMidiLearning={learningControlId === 'reverbMixControl'}
                             midiMapping={ccMappings.reverbMixControl}
+                        />
+                        <SliderControl
+                            label="Harmonics Gamma"
+                            value={harmonicsGamma}
+                            onChange={setHarmonicsGamma}
+                            min={harmonicsGammaMin}
+                            max={harmonicsGammaMax}
+                            step={0.01}
+                            numberStep={0.01}
+                            unit=""
+                            decimals={2}
+                            inputId="harmonicsGammaControl"
+                            onMinChange={setHarmonicsGammaMin}
+                            onMaxChange={setHarmonicsGammaMax}
+                            onMidiLearn={() => startMidiLearn('harmonicsGammaControl')}
+                            isMidiLearning={learningControlId === 'harmonicsGammaControl'}
+                            midiMapping={ccMappings.harmonicsGammaControl}
                         />
                         <SliderControl
                             label="Reverb Time"
