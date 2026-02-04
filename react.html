@@ -183,16 +183,176 @@ const app = document.getElementById("app");
 
 const instrument = new NoteInstrument();
 
+const getStoredNumber = (key, fallbackValue) => {
+    const raw = localStorage.getItem(key);
+    if (raw === null || raw === undefined || raw === "") {
+        return fallbackValue;
+    }
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : fallbackValue;
+};
+
+function SliderControl({
+    label,
+    value,
+    onChange,
+    min,
+    max,
+    step,
+    unit,
+    decimals = 2,
+    numberStep,
+    inputId,
+    showRangeInputs = true,
+    onMinChange,
+    onMaxChange
+}) {
+    const formatValue = (val) => {
+        if (Number.isNaN(val)) {
+            return "";
+        }
+        if (typeof decimals === "number") {
+            return Number(val).toFixed(decimals);
+        }
+        return String(val);
+    };
+
+    const handleNumberChange = (e) => {
+        const raw = e.target.value;
+        if (raw === "") {
+            return;
+        }
+        const parsed = Number(raw);
+        if (!Number.isNaN(parsed)) {
+            const clamped = Math.min(max, Math.max(min, parsed));
+            onChange(clamped);
+        }
+    };
+
+    const handleMinChange = (e) => {
+        if (!onMinChange) {
+            return;
+        }
+        const raw = e.target.value;
+        if (raw === "") {
+            return;
+        }
+        const parsed = Number(raw);
+        if (!Number.isNaN(parsed)) {
+            const nextMin = Math.min(parsed, max);
+            onMinChange(nextMin);
+            if (value < nextMin) {
+                onChange(nextMin);
+            }
+        }
+    };
+
+    const handleMaxChange = (e) => {
+        if (!onMaxChange) {
+            return;
+        }
+        const raw = e.target.value;
+        if (raw === "") {
+            return;
+        }
+        const parsed = Number(raw);
+        if (!Number.isNaN(parsed)) {
+            const nextMax = Math.max(parsed, min);
+            onMaxChange(nextMax);
+            if (value > nextMax) {
+                onChange(nextMax);
+            }
+        }
+    };
+
+    return (
+        <div className="form-group mb-3">
+            <div className="d-flex align-items-center justify-content-between">
+                <label className="form-label mb-1" htmlFor={inputId}>{label}</label>
+            {showRangeInputs && (
+                <>
+                    <div className="d-flex align-items-center mr-2">
+                        <span className="text-muted small mr-2">Min</span>
+                        <input
+                            type="number"
+                            className="form-control form-control-sm text-right"
+                            style={{ width: "90px" }}
+                            min={Number.MIN_SAFE_INTEGER}
+                            max={max}
+                            step={numberStep || step}
+                            value={min}
+                            onChange={handleMinChange}
+                        />
+                    </div>
+                    <div className="d-flex align-items-center mr-2">
+                        <span className="text-muted small mr-2">Max</span>
+                        <input
+                            type="number"
+                            className="form-control form-control-sm text-right"
+                            style={{ width: "90px" }}
+                            min={min}
+                            max={Number.MAX_SAFE_INTEGER}
+                            step={numberStep || step}
+                            value={max}
+                            onChange={handleMaxChange}
+                        />
+                    </div>
+                    </>
+            )}
+                <div className="d-flex align-items-center">
+                    <input
+                        type="number"
+                        className="form-control form-control-sm text-right mr-2"
+                        style={{ width: "110px" }}
+                        min={min}
+                        max={max}
+                        step={numberStep || step}
+                        value={value}
+                        onChange={handleNumberChange}
+                    />
+                    <span className="text-muted small">{formatValue(value)}{unit || ""}</span>
+                </div>
+            </div>
+            <input
+                type="range"
+                min={min}
+                max={max}
+                step={step}
+                value={value}
+                onChange={(e) => onChange(Number(e.target.value))}
+                className="form-control-range"
+                id={inputId}
+            />
+        </div>
+    );
+}
+
 function App() {
     const [isAudioOn, setIsAudioOn] = useState(audioCtx.state === "running");
-    const [attack, setAttack] = useState(() => parseFloat(localStorage.getItem('attack')) || 0.01);
-    const [decay, setDecay] = useState(() => parseFloat(localStorage.getItem('decay')) || 0.2);
-    const [sustain, setSustain] = useState(() => parseFloat(localStorage.getItem('sustain')) || 0.7);
-    const [release, setRelease] = useState(() => parseFloat(localStorage.getItem('release')) || 0.5);
-    const [volume, setVolume] = useState(() => parseFloat(localStorage.getItem('volume')) || 0.7);
-    const [reverbMix, setReverbMix] = useState(() => parseFloat(localStorage.getItem('reverbMix')) || 0.3);
-    const [reverbTime, setReverbTime] = useState(() => parseFloat(localStorage.getItem('reverbTime')) || 2);
-    const [reverbDecay, setReverbDecay] = useState(() => parseFloat(localStorage.getItem('reverbDecay')) || 2);
+    const [attack, setAttack] = useState(() => getStoredNumber("attack", 0.01));
+    const [decay, setDecay] = useState(() => getStoredNumber("decay", 0.2));
+    const [sustain, setSustain] = useState(() => getStoredNumber("sustain", 0.7));
+    const [release, setRelease] = useState(() => getStoredNumber("release", 0.5));
+    const [volume, setVolume] = useState(() => getStoredNumber("volume", 0.7));
+    const [reverbMix, setReverbMix] = useState(() => getStoredNumber("reverbMix", 0.3));
+    const [reverbTime, setReverbTime] = useState(() => getStoredNumber("reverbTime", 2));
+    const [reverbDecay, setReverbDecay] = useState(() => getStoredNumber("reverbDecay", 2));
+    const [attackMin, setAttackMin] = useState(() => getStoredNumber("attackMin", 0.001));
+    const [attackMax, setAttackMax] = useState(() => getStoredNumber("attackMax", 1));
+    const [decayMin, setDecayMin] = useState(() => getStoredNumber("decayMin", 0.001));
+    const [decayMax, setDecayMax] = useState(() => getStoredNumber("decayMax", 2));
+    const [sustainMin, setSustainMin] = useState(() => getStoredNumber("sustainMin", 0));
+    const [sustainMax, setSustainMax] = useState(() => getStoredNumber("sustainMax", 1));
+    const [releaseMin, setReleaseMin] = useState(() => getStoredNumber("releaseMin", 0.001));
+    const [releaseMax, setReleaseMax] = useState(() => getStoredNumber("releaseMax", 2));
+    const [volumeMin, setVolumeMin] = useState(() => getStoredNumber("volumeMin", 0));
+    const [volumeMax, setVolumeMax] = useState(() => getStoredNumber("volumeMax", 1));
+    const [reverbMixMin, setReverbMixMin] = useState(() => getStoredNumber("reverbMixMin", 0));
+    const [reverbMixMax, setReverbMixMax] = useState(() => getStoredNumber("reverbMixMax", 1));
+    const [reverbTimeMin, setReverbTimeMin] = useState(() => getStoredNumber("reverbTimeMin", 0.1));
+    const [reverbTimeMax, setReverbTimeMax] = useState(() => getStoredNumber("reverbTimeMax", 6));
+    const [reverbDecayMin, setReverbDecayMin] = useState(() => getStoredNumber("reverbDecayMin", 0.5));
+    const [reverbDecayMax, setReverbDecayMax] = useState(() => getStoredNumber("reverbDecayMax", 6));
     const [midiAccess, setMidiAccess] = useState(null);
     const [midiInputs, setMidiInputs] = useState([]);
     const [selectedInputIds, setSelectedInputIds] = useState(() => JSON.parse(localStorage.getItem('selectedInputIds')) || []);
@@ -220,8 +380,10 @@ function App() {
       }
       try {
           const access = await navigator.requestMIDIAccess();
+          console.log(access);
           setMidiAccess(access);
           updateMidiInputs(access);
+          connectSelectedInputs(access, selectedInputIds);
           access.onstatechange = () => updateMidiInputs(access);
       } catch (err) {
           setMidiStatus("MIDI access denied");
@@ -242,7 +404,8 @@ function App() {
       }
   };
 
-  const connectSelectedInputs = (ids) => {
+  const connectSelectedInputs = (midiAccess, ids) => {
+    console.log("Restoring MIDI connections to selected inputs:", selectedInputIds);
       if (!midiAccess) {
           return;
       }
@@ -277,7 +440,7 @@ function App() {
       const options = Array.from(e.target.selectedOptions);
       const ids = options.map((option) => option.value);
       setSelectedInputIds(ids);
-      connectSelectedInputs(ids);
+      connectSelectedInputs(midiAccess, ids);
   };
 
   useEffect(() => {
@@ -326,8 +489,73 @@ function App() {
 
   useEffect(() => {
       localStorage.setItem('reverbTime', reverbTime);
+      localStorage.setItem('reverbDecay', reverbDecay);
       instrument.setReverbTime(reverbTime, reverbDecay);
   }, [reverbTime, reverbDecay]);
+
+  useEffect(() => {
+      localStorage.setItem("attackMin", attackMin);
+  }, [attackMin]);
+
+  useEffect(() => {
+      localStorage.setItem("attackMax", attackMax);
+  }, [attackMax]);
+
+  useEffect(() => {
+      localStorage.setItem("decayMin", decayMin);
+  }, [decayMin]);
+
+  useEffect(() => {
+      localStorage.setItem("decayMax", decayMax);
+  }, [decayMax]);
+
+  useEffect(() => {
+      localStorage.setItem("sustainMin", sustainMin);
+  }, [sustainMin]);
+
+  useEffect(() => {
+      localStorage.setItem("sustainMax", sustainMax);
+  }, [sustainMax]);
+
+  useEffect(() => {
+      localStorage.setItem("releaseMin", releaseMin);
+  }, [releaseMin]);
+
+  useEffect(() => {
+      localStorage.setItem("releaseMax", releaseMax);
+  }, [releaseMax]);
+
+  useEffect(() => {
+      localStorage.setItem("volumeMin", volumeMin);
+  }, [volumeMin]);
+
+  useEffect(() => {
+      localStorage.setItem("volumeMax", volumeMax);
+  }, [volumeMax]);
+
+  useEffect(() => {
+      localStorage.setItem("reverbMixMin", reverbMixMin);
+  }, [reverbMixMin]);
+
+  useEffect(() => {
+      localStorage.setItem("reverbMixMax", reverbMixMax);
+  }, [reverbMixMax]);
+
+  useEffect(() => {
+      localStorage.setItem("reverbTimeMin", reverbTimeMin);
+  }, [reverbTimeMin]);
+
+  useEffect(() => {
+      localStorage.setItem("reverbTimeMax", reverbTimeMax);
+  }, [reverbTimeMax]);
+
+  useEffect(() => {
+      localStorage.setItem("reverbDecayMin", reverbDecayMin);
+  }, [reverbDecayMin]);
+
+  useEffect(() => {
+      localStorage.setItem("reverbDecayMax", reverbDecayMax);
+  }, [reverbDecayMax]);
 
   useEffect(() => {
       localStorage.setItem('selectedInputIds', JSON.stringify(selectedInputIds));
@@ -342,8 +570,25 @@ function App() {
   const handleReverbTime = (e) => setReverbTime(Number(e.target.value));
   const handleReverbDecay = (e) => setReverbDecay(Number(e.target.value));
 
+  const handleTurnOn = async () => {
+      if (audioCtx.state !== "running") {
+          await audioCtx.resume();
+      }
+      setIsAudioOn(audioCtx.state === "running");
+  };
+
   return (
     <div className="container py-4">
+        <div className="mb-4">
+            <button 
+                className="btn btn-success btn-lg btn-block"
+                onClick={handleTurnOn}
+                style={{ fontSize: "24px", padding: "20px" }}
+            >
+                {isAudioOn ? "✓ Enabled" : "Click to Enable"}
+            </button>
+        </div>
+
         <div className="d-flex align-items-center justify-content-between mb-3">
             <h1 className="h3 mb-0">React Audio Instrument</h1>
         </div>
@@ -377,41 +622,121 @@ function App() {
                 <div className="row">
                     <div className="col-md-6">
                         <h2 className="h5">Envelope</h2>
-                        <div className="form-group mb-3">
-                            <label className="form-label">Attack: {attack.toFixed(3)}s</label>
-                            <input type="range" min="0.001" max="1" step="0.001" value={attack} onChange={handleAttack} className="form-control-range" />
-                        </div>
-                        <div className="form-group mb-3">
-                            <label className="form-label">Decay: {decay.toFixed(3)}s</label>
-                            <input type="range" min="0.001" max="2" step="0.001" value={decay} onChange={handleDecay} className="form-control-range" />
-                        </div>
-                        <div className="form-group mb-3">
-                            <label className="form-label">Sustain: {sustain.toFixed(2)}</label>
-                            <input type="range" min="0" max="1" step="0.01" value={sustain} onChange={handleSustain} className="form-control-range" />
-                        </div>
-                        <div className="form-group mb-3">
-                            <label className="form-label">Release: {release.toFixed(3)}s</label>
-                            <input type="range" min="0.001" max="2" step="0.001" value={release} onChange={handleRelease} className="form-control-range" />
-                        </div>
+                        <SliderControl
+                            label="Attack"
+                            value={attack}
+                            onChange={setAttack}
+                            min={attackMin}
+                            max={attackMax}
+                            step={0.001}
+                            numberStep={0.001}
+                            unit="s"
+                            decimals={3}
+                            inputId="attackControl"
+                            onMinChange={setAttackMin}
+                            onMaxChange={setAttackMax}
+                        />
+                        <SliderControl
+                            label="Decay"
+                            value={decay}
+                            onChange={setDecay}
+                            min={decayMin}
+                            max={decayMax}
+                            step={0.001}
+                            numberStep={0.001}
+                            unit="s"
+                            decimals={3}
+                            inputId="decayControl"
+                            onMinChange={setDecayMin}
+                            onMaxChange={setDecayMax}
+                        />
+                        <SliderControl
+                            label="Sustain"
+                            value={sustain}
+                            onChange={setSustain}
+                            min={sustainMin}
+                            max={sustainMax}
+                            step={0.01}
+                            numberStep={0.01}
+                            unit=""
+                            decimals={2}
+                            inputId="sustainControl"
+                            onMinChange={setSustainMin}
+                            onMaxChange={setSustainMax}
+                        />
+                        <SliderControl
+                            label="Release"
+                            value={release}
+                            onChange={setRelease}
+                            min={releaseMin}
+                            max={releaseMax}
+                            step={0.001}
+                            numberStep={0.001}
+                            unit="s"
+                            decimals={3}
+                            inputId="releaseControl"
+                            onMinChange={setReleaseMin}
+                            onMaxChange={setReleaseMax}
+                        />
                     </div>
                     <div className="col-md-6">
                         <h2 className="h5">Output</h2>
-                        <div className="form-group mb-3">
-                            <label className="form-label">Volume: {volume.toFixed(2)}</label>
-                            <input type="range" min="0" max="1" step="0.01" value={volume} onChange={handleVolume} className="form-control-range" />
-                        </div>
-                        <div className="form-group mb-3">
-                            <label className="form-label">Reverb Mix: {reverbMix.toFixed(2)}</label>
-                            <input type="range" min="0" max="1" step="0.01" value={reverbMix} onChange={handleReverbMix} className="form-control-range" />
-                        </div>
-                        <div className="form-group mb-3">
-                            <label className="form-label">Reverb Time: {reverbTime.toFixed(2)}s</label>
-                            <input type="range" min="0.1" max="6" step="0.1" value={reverbTime} onChange={handleReverbTime} className="form-control-range" />
-                        </div>
-                        <div className="form-group mb-3">
-                            <label className="form-label">Reverb Decay: {reverbDecay.toFixed(2)}</label>
-                            <input type="range" min="0.5" max="6" step="0.1" value={reverbDecay} onChange={handleReverbDecay} className="form-control-range" />
-                        </div>
+                        <SliderControl
+                            label="Volume"
+                            value={volume}
+                            onChange={setVolume}
+                            min={volumeMin}
+                            max={volumeMax}
+                            step={0.01}
+                            numberStep={0.01}
+                            unit=""
+                            decimals={2}
+                            inputId="volumeControl"
+                            onMinChange={setVolumeMin}
+                            onMaxChange={setVolumeMax}
+                        />
+                        <SliderControl
+                            label="Reverb Mix"
+                            value={reverbMix}
+                            onChange={setReverbMix}
+                            min={reverbMixMin}
+                            max={reverbMixMax}
+                            step={0.01}
+                            numberStep={0.01}
+                            unit=""
+                            decimals={2}
+                            inputId="reverbMixControl"
+                            onMinChange={setReverbMixMin}
+                            onMaxChange={setReverbMixMax}
+                        />
+                        <SliderControl
+                            label="Reverb Time"
+                            value={reverbTime}
+                            onChange={setReverbTime}
+                            min={reverbTimeMin}
+                            max={reverbTimeMax}
+                            step={0.1}
+                            numberStep={0.1}
+                            unit="s"
+                            decimals={2}
+                            inputId="reverbTimeControl"
+                            onMinChange={setReverbTimeMin}
+                            onMaxChange={setReverbTimeMax}
+                        />
+                        <SliderControl
+                            label="Reverb Decay"
+                            value={reverbDecay}
+                            onChange={setReverbDecay}
+                            min={reverbDecayMin}
+                            max={reverbDecayMax}
+                            step={0.1}
+                            numberStep={0.1}
+                            unit=""
+                            decimals={2}
+                            inputId="reverbDecayControl"
+                            onMinChange={setReverbDecayMin}
+                            onMaxChange={setReverbDecayMax}
+                        />
                     </div>
                 </div>
             </div>
