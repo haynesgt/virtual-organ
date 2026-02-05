@@ -148,7 +148,9 @@ class NoteInstrument {
     }
 
     setVolume(value) {
-        this.rootNode.masterGain.gain.setValueAtTime(value, audioCtx.currentTime);
+        this.rootNode.masterGain.gain.cancelScheduledValues(audioCtx.currentTime);
+        this.rootNode.masterGain.gain.setValueAtTime(this.rootNode.masterGain.gain.value, audioCtx.currentTime);
+        this.rootNode.masterGain.gain.linearRampToValueAtTime(value, audioCtx.currentTime + 0.1);
     }
 
     setReverbMix(value) {
