@@ -205,15 +205,20 @@ class NoteInstrument {
         const noteFrequency = baseFrequency * Math.pow(2, this.pitchBend / 12);
         const noteWavelength = 1 / noteFrequency;
         const attack = Math.max(this.envelope.attack, noteWavelength);
-        const decayTau = Math.max(this.envelope.decay / 3, 0.001);
-        const now = audioCtx.currentTime;
         const existing = this.noteOscs[note];
         if (existing) {
-            existing.gainNode.gain.cancelScheduledValues(now);
-            existing.gainNode.gain.setValueAtTime(existing.gainNode.gain.value, now);
-            existing.gainNode.gain.linearRampToValueAtTime(velocity, now + attack);
-            existing.gainNode.gain.setTargetAtTime(velocity * this.envelope.sustain, now + attack + 0.01, decayTau);
-            return;
+            if (existing.gainNode.gain.value === 0) {
+                existing.osc.stop();
+                existing.osc.disconnect();
+                existing.gainNode.disconnect();
+                delete this.noteOscs[note];
+            } else {
+                existing.gainNode.gain.cancelScheduledValues(audioCtx.currentTime);
+                existing.gainNode.gain.setValueAtTime(existing.gainNode.gain.value, audioCtx.currentTime);
+                existing.gainNode.gain.linearRampToValueAtTime(velocity, audioCtx.currentTime + attack);
+                existing.gainNode.gain.linearRampToValueAtTime(velocity * this.envelope.sustain, audioCtx.currentTime + attack + this.envelope.decay);
+                return;
+            }
         }
         const osc = audioCtx.createOscillator();
         const gainNode = audioCtx.createGain();
@@ -223,9 +228,10 @@ class NoteInstrument {
         osc.setPeriodicWave(wave);
         osc.frequency.value = noteFrequency;
 
+        const now = audioCtx.currentTime;
         gainNode.gain.setValueAtTime(0, now);
         gainNode.gain.linearRampToValueAtTime(velocity, now + attack);
-        gainNode.gain.setTargetAtTime(velocity * this.envelope.sustain, now + attack + 0.01, decayTau);
+        gainNode.gain.linearRampToValueAtTime(velocity * this.envelope.sustain, now + attack + this.envelope.decay);
 
         osc.connect(gainNode);
         gainNode.connect(this.rootNode.dryGain);
@@ -239,19 +245,16 @@ class NoteInstrument {
         const existing = this.noteOscs[note];
         if (existing) {
             const now = audioCtx.currentTime;
-            const releaseTau = Math.max(this.envelope.release / 3, 0.001);
             existing.gainNode.gain.cancelScheduledValues(now);
             existing.gainNode.gain.setValueAtTime(existing.gainNode.gain.value, now);
-            existing.gainNode.gain.setTargetAtTime(0, now, releaseTau);
+            existing.gainNode.gain.linearRampToValueAtTime(0, now + this.envelope.release);
             setTimeout(() => {
-                // this check is important in case the note was re-triggered during the release phase
-                if (existing.gainNode.gain.value <= 0.001) {
+                if (existing.gainNode.gain.value === 0) {
                     existing.osc.stop();
                     existing.osc.disconnect();
                     existing.gainNode.disconnect();
-                    delete this.noteOscs[note];
                 }
-            }, this.envelope.release * 1000 * 2 + 100);
+            }, this.envelope.release * 1000 + 100);
         }
     }
 }
@@ -503,57 +506,33 @@ function App() {
       const height = canvas.height;
       ctx.clearRect(0, 0, width, height);
 
-      const decayTau = Math.max(decay / 3, 0.001);
-      const releaseTau = Math.max(release / 3, 0.001);
-      
-      // Set minimum release time for visualization
-      const minReleaseT = Math.max(release, 0.5);
-      const total = attack + decay + minReleaseT;
+      const sustainT = 0.3;
+      const total = attack + decay + release + sustainT;
+      const attackW = (attack / total) * width;
+      const decayW = (decay / total) * width;
+      const releaseW = (release / total) * width;
+      const sustainW = (sustainT / total) * width;
 
+      const attackY = height * 0.1;
+      const sustainY = height - sustain * (height * 0.8) - height * 0.1;
       const baseY = height - height * 0.1;
-      const topY = height * 0.1;
-      const heightRange = height * 0.8;
-
-      const valueAtTime = (t) => {
-          if (t <= 0) {
-              return 0;
-          }
-          if (t < attack) {
-              // Linear attack
-              return t / attack;
-          }
-          if (t < attack + decay) {
-              // Exponential decay from 1 → sustain
-              const t2 = t - attack;
-              return sustain + (1 - sustain) * Math.exp(-t2 / decayTau);
-          }
-          // Exponential release from sustain → 0
-          const t3 = t - attack - decay;
-          return sustain * Math.exp(-t3 / releaseTau);
-      };
 
       ctx.strokeStyle = "#28a745";
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(0, baseY);
-
-      for (let x = 0; x <= width; x++) {
-          const t = (x / width) * total;
-          const v = valueAtTime(t);
-          const y = baseY - v * heightRange;
-          ctx.lineTo(x, Math.min(baseY, Math.max(topY, y)));
-      }
+      ctx.lineTo(attackW, attackY);
+      ctx.lineTo(attackW + decayW, sustainY);
+      ctx.lineTo(attackW + decayW + sustainW, sustainY);
+      ctx.lineTo(width, baseY);
       ctx.stroke();
 
       ctx.fillStyle = "rgba(40, 167, 69, 0.15)";
       ctx.beginPath();
       ctx.moveTo(0, baseY);
-      for (let x = 0; x <= width; x++) {
-          const t = (x / width) * total;
-          const v = valueAtTime(t);
-          const y = baseY - v * heightRange;
-          ctx.lineTo(x, Math.min(baseY, Math.max(topY, y)));
-      }
+      ctx.lineTo(attackW, attackY);
+      ctx.lineTo(attackW + decayW, sustainY);
+      ctx.lineTo(attackW + decayW + sustainW, sustainY);
       ctx.lineTo(width, baseY);
       ctx.closePath();
       ctx.fill();
