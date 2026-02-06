@@ -23,7 +23,7 @@ https://github.com/dance2die/react-use-localstorage/blob/master/src/index.ts
 <body>
 <div id="app"></div>
 <script type="text/babel">
-const { useState, useEffect, useRef } = React;
+const { useState, useEffect, useRef, useCallback } = React;
 const { HashRouter, Link, Route, useRouteMatch } = ReactRouterDOM;
 const { Dropdown } = ReactBootstrap;
 
@@ -52,6 +52,23 @@ function useLocalStorageNumber(key, fallbackValue) {
     }, [key, value]);
     
     return [value, setValue];
+}
+
+// Helper hook for localStorage-backed numeric state with ref
+function useLocalStorageNumberWithRef(key, fallbackValue) {
+    const [value, setValue] = useState(() => getStoredNumber(key, fallbackValue));
+    const ref = useRef(value);
+    
+    const set = useCallback((newValue) => {
+        setValue(prev => {
+            const next = typeof newValue === "function" ? newValue(prev) : newValue;
+            ref.current = next;
+            return next;
+        });
+    }, []);
+    
+    
+    return { ref, val: value, set };
 }
 
 function createReverbImpulse(seconds, decay) {
@@ -441,39 +458,39 @@ function SliderControl({
 function App() {
     const [isAudioOn, setIsAudioOn] = useState(audioCtx.state === "running");
     const [enableButtonClicked, setEnableButtonClicked] = useState(false);
-    const [attack, setAttack] = useLocalStorageNumber("attack", 0.01);
-    const [decay, setDecay] = useLocalStorageNumber("decay", 0.2);
-    const [sustain, setSustain] = useLocalStorageNumber("sustain", 0.7);
-    const [release, setRelease] = useLocalStorageNumber("release", 0.5);
-    const [volume, setVolume] = useLocalStorageNumber("volume", 0.7);
-    const [reverbMix, setReverbMix] = useLocalStorageNumber("reverbMix", 0.3);
-    const [reverbTime, setReverbTime] = useLocalStorageNumber("reverbTime", 2);
-    const [reverbDecay, setReverbDecay] = useLocalStorageNumber("reverbDecay", 2);
-    const [harmonicsGamma, setHarmonicsGamma] = useLocalStorageNumber("harmonicsGamma", 0.5);
-    const [harmonicsGammaMin, setHarmonicsGammaMin] = useLocalStorageNumber("harmonicsGammaMin", 0.1);
-    const [harmonicsGammaMax, setHarmonicsGammaMax] = useLocalStorageNumber("harmonicsGammaMax", 1);
-    const [evenHarmonicsScale, setEvenHarmonicsScale] = useLocalStorageNumber("evenHarmonicsScale", 0.5);
-    const [evenHarmonicsScaleMin, setEvenHarmonicsScaleMin] = useLocalStorageNumber("evenHarmonicsScaleMin", 0);
-    const [evenHarmonicsScaleMax, setEvenHarmonicsScaleMax] = useLocalStorageNumber("evenHarmonicsScaleMax", 1);
-    const [pitchBend, setPitchBend] = useLocalStorageNumber("pitchBend", 0);
-    const [pitchBendMin, setPitchBendMin] = useLocalStorageNumber("pitchBendMin", -2);
-    const [pitchBendMax, setPitchBendMax] = useLocalStorageNumber("pitchBendMax", 2);
-    const [attackMin, setAttackMin] = useLocalStorageNumber("attackMin", 0.001);
-    const [attackMax, setAttackMax] = useLocalStorageNumber("attackMax", 1);
-    const [decayMin, setDecayMin] = useLocalStorageNumber("decayMin", 0.001);
-    const [decayMax, setDecayMax] = useLocalStorageNumber("decayMax", 2);
-    const [sustainMin, setSustainMin] = useLocalStorageNumber("sustainMin", 0);
-    const [sustainMax, setSustainMax] = useLocalStorageNumber("sustainMax", 1);
-    const [releaseMin, setReleaseMin] = useLocalStorageNumber("releaseMin", 0.001);
-    const [releaseMax, setReleaseMax] = useLocalStorageNumber("releaseMax", 2);
-    const [volumeMin, setVolumeMin] = useLocalStorageNumber("volumeMin", 0);
-    const [volumeMax, setVolumeMax] = useLocalStorageNumber("volumeMax", 1);
-    const [reverbMixMin, setReverbMixMin] = useLocalStorageNumber("reverbMixMin", 0);
-    const [reverbMixMax, setReverbMixMax] = useLocalStorageNumber("reverbMixMax", 1);
-    const [reverbTimeMin, setReverbTimeMin] = useLocalStorageNumber("reverbTimeMin", 0.1);
-    const [reverbTimeMax, setReverbTimeMax] = useLocalStorageNumber("reverbTimeMax", 6);
-    const [reverbDecayMin, setReverbDecayMin] = useLocalStorageNumber("reverbDecayMin", 0.5);
-    const [reverbDecayMax, setReverbDecayMax] = useLocalStorageNumber("reverbDecayMax", 6);
+    const { ref: attackRef, val: attack, set: setAttack } = useLocalStorageNumberWithRef("attack", 0.01);
+    const { ref: decayRef, val: decay, set: setDecay } = useLocalStorageNumberWithRef("decay", 0.2);
+    const { ref: sustainRef, val: sustain, set: setSustain } = useLocalStorageNumberWithRef("sustain", 0.7);
+    const { ref: releaseRef, val: release, set: setRelease } = useLocalStorageNumberWithRef("release", 0.5);
+    const { ref: volumeRef, val: volume, set: setVolume } = useLocalStorageNumberWithRef("volume", 0.7);
+    const { ref: reverbMixRef, val: reverbMix, set: setReverbMix } = useLocalStorageNumberWithRef("reverbMix", 0.3);
+    const { ref: reverbTimeRef, val: reverbTime, set: setReverbTime } = useLocalStorageNumberWithRef("reverbTime", 2);
+    const { ref: reverbDecayRef, val: reverbDecay, set: setReverbDecay } = useLocalStorageNumberWithRef("reverbDecay", 2);
+    const { ref: harmonicsGammaRef, val: harmonicsGamma, set: setHarmonicsGamma } = useLocalStorageNumberWithRef("harmonicsGamma", 0.5);
+    const { ref: harmonicsGammaMinRef, val: harmonicsGammaMin, set: setHarmonicsGammaMin } = useLocalStorageNumberWithRef("harmonicsGammaMin", 0.1);
+    const { ref: harmonicsGammaMaxRef, val: harmonicsGammaMax, set: setHarmonicsGammaMax } = useLocalStorageNumberWithRef("harmonicsGammaMax", 1);
+    const { ref: evenHarmonicsScaleRef, val: evenHarmonicsScale, set: setEvenHarmonicsScale } = useLocalStorageNumberWithRef("evenHarmonicsScale", 0.5);
+    const { ref: evenHarmonicsScaleMinRef, val: evenHarmonicsScaleMin, set: setEvenHarmonicsScaleMin } = useLocalStorageNumberWithRef("evenHarmonicsScaleMin", 0);
+    const { ref: evenHarmonicsScaleMaxRef, val: evenHarmonicsScaleMax, set: setEvenHarmonicsScaleMax } = useLocalStorageNumberWithRef("evenHarmonicsScaleMax", 1);
+    const { ref: pitchBendRef, val: pitchBend, set: setPitchBend } = useLocalStorageNumberWithRef("pitchBend", 0);
+    const { ref: pitchBendMinRef, val: pitchBendMin, set: setPitchBendMin } = useLocalStorageNumberWithRef("pitchBendMin", -2);
+    const { ref: pitchBendMaxRef, val: pitchBendMax, set: setPitchBendMax } = useLocalStorageNumberWithRef("pitchBendMax", 2);
+    const { ref: attackMinRef, val: attackMin, set: setAttackMin } = useLocalStorageNumberWithRef("attackMin", 0.001);
+    const { ref: attackMaxRef, val: attackMax, set: setAttackMax } = useLocalStorageNumberWithRef("attackMax", 1);
+    const { ref: decayMinRef, val: decayMin, set: setDecayMin } = useLocalStorageNumberWithRef("decayMin", 0.001);
+    const { ref: decayMaxRef, val: decayMax, set: setDecayMax } = useLocalStorageNumberWithRef("decayMax", 2);
+    const { ref: sustainMinRef, val: sustainMin, set: setSustainMin } = useLocalStorageNumberWithRef("sustainMin", 0);
+    const { ref: sustainMaxRef, val: sustainMax, set: setSustainMax } = useLocalStorageNumberWithRef("sustainMax", 1);
+    const { ref: releaseMinRef, val: releaseMin, set: setReleaseMin } = useLocalStorageNumberWithRef("releaseMin", 0.001);
+    const { ref: releaseMaxRef, val: releaseMax, set: setReleaseMax } = useLocalStorageNumberWithRef("releaseMax", 2);
+    const { ref: volumeMinRef, val: volumeMin, set: setVolumeMin } = useLocalStorageNumberWithRef("volumeMin", 0);
+    const { ref: volumeMaxRef, val: volumeMax, set: setVolumeMax } = useLocalStorageNumberWithRef("volumeMax", 1);
+    const { ref: reverbMixMinRef, val: reverbMixMin, set: setReverbMixMin } = useLocalStorageNumberWithRef("reverbMixMin", 0);
+    const { ref: reverbMixMaxRef, val: reverbMixMax, set: setReverbMixMax } = useLocalStorageNumberWithRef("reverbMixMax", 1);
+    const { ref: reverbTimeMinRef, val: reverbTimeMin, set: setReverbTimeMin } = useLocalStorageNumberWithRef("reverbTimeMin", 0.1);
+    const { ref: reverbTimeMaxRef, val: reverbTimeMax, set: setReverbTimeMax } = useLocalStorageNumberWithRef("reverbTimeMax", 6);
+    const { ref: reverbDecayMinRef, val: reverbDecayMin, set: setReverbDecayMin } = useLocalStorageNumberWithRef("reverbDecayMin", 0.5);
+    const { ref: reverbDecayMaxRef, val: reverbDecayMax, set: setReverbDecayMax } = useLocalStorageNumberWithRef("reverbDecayMax", 6);
     const [midiAccess, setMidiAccess] = useState(null);
     const [midiInputs, setMidiInputs] = useState([]);
     const [selectedInputIds, setSelectedInputIds] = useState(() => JSON.parse(localStorage.getItem('selectedInputIds')) || []);
@@ -877,17 +894,17 @@ function App() {
 
     const handleCcValue = (controlId, normalizedValue) => {
       const mapping = {
-          attackControl: { state: attack, setState: setAttack, min: attackMin, max: attackMax },
-          decayControl: { state: decay, setState: setDecay, min: decayMin, max: decayMax },
-          sustainControl: { state: sustain, setState: setSustain, min: sustainMin, max: sustainMax },
-          releaseControl: { state: release, setState: setRelease, min: releaseMin, max: releaseMax },
-          volumeControl: { state: volume, setState: setVolume, min: volumeMin, max: volumeMax },
-          reverbMixControl: { state: reverbMix, setState: setReverbMix, min: reverbMixMin, max: reverbMixMax },
-          harmonicsGammaControl: { state: harmonicsGamma, setState: setHarmonicsGamma, min: harmonicsGammaMin, max: harmonicsGammaMax },
-          evenHarmonicsScaleControl: { state: evenHarmonicsScale, setState: setEvenHarmonicsScale, min: evenHarmonicsScaleMin, max: evenHarmonicsScaleMax },
-          reverbTimeControl: { state: reverbTime, setState: setReverbTime, min: reverbTimeMin, max: reverbTimeMax },
-          reverbDecayControl: { state: reverbDecay, setState: setReverbDecay, min: reverbDecayMin, max: reverbDecayMax },
-          pitchBendControl: { state: pitchBend, setState: setPitchBend, min: pitchBendMin, max: pitchBendMax }
+          attackControl: { setState: setAttack, min: attackMinRef.current, max: attackMaxRef.current },
+          decayControl: { setState: setDecay, min: decayMinRef.current, max: decayMaxRef.current },
+          sustainControl: { setState: setSustain, min: sustainMinRef.current, max: sustainMaxRef.current },
+          releaseControl: { setState: setRelease, min: releaseMinRef.current, max: releaseMaxRef.current },
+          volumeControl: { setState: setVolume, min: volumeMinRef.current, max: volumeMaxRef.current },
+          reverbMixControl: { setState: setReverbMix, min: reverbMixMinRef.current, max: reverbMixMaxRef.current },
+          harmonicsGammaControl: { setState: setHarmonicsGamma, min: harmonicsGammaMinRef.current, max: harmonicsGammaMaxRef.current },
+          evenHarmonicsScaleControl: { setState: setEvenHarmonicsScale, min: evenHarmonicsScaleMinRef.current, max: evenHarmonicsScaleMaxRef.current },
+          reverbTimeControl: { setState: setReverbTime, min: reverbTimeMinRef.current, max: reverbTimeMaxRef.current },
+          reverbDecayControl: { setState: setReverbDecay, min: reverbDecayMinRef.current, max: reverbDecayMaxRef.current },
+          pitchBendControl: { setState: setPitchBend, min: pitchBendMinRef.current, max: pitchBendMaxRef.current }
       };
 
       const control = mapping[controlId];
