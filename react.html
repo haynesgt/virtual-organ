@@ -71,6 +71,19 @@ function useLocalStorageNumberWithRef(key, fallbackValue) {
     return { get current() { return ref.current; }, set };
 }
 
+function useRangedControl(key, fallbackValue, minKey, minFallback, maxKey, maxFallback) {
+    const control = useLocalStorageNumberWithRef(key, fallbackValue);
+    const min = useLocalStorageNumberWithRef(minKey, minFallback);
+    const max = useLocalStorageNumberWithRef(maxKey, maxFallback);
+
+    return {
+        get current() { return control.current; },
+        set: control.set,
+        min,
+        max
+    };
+}
+
 function createReverbImpulse(seconds, decay) {
     const rate = audioCtx.sampleRate;
     const length = Math.max(1, Math.floor(seconds * rate));
@@ -458,39 +471,17 @@ function SliderControl({
 function App() {
     const [isAudioOn, setIsAudioOn] = useState(audioCtx.state === "running");
     const [enableButtonClicked, setEnableButtonClicked] = useState(false);
-    const attackControl = useLocalStorageNumberWithRef("attack", 0.01);
-    const decayControl = useLocalStorageNumberWithRef("decay", 0.2);
-    const sustainControl = useLocalStorageNumberWithRef("sustain", 0.7);
-    const releaseControl = useLocalStorageNumberWithRef("release", 0.5);
-    const volumeControl = useLocalStorageNumberWithRef("volume", 0.7);
-    const reverbMixControl = useLocalStorageNumberWithRef("reverbMix", 0.3);
-    const reverbTimeControl = useLocalStorageNumberWithRef("reverbTime", 2);
-    const reverbDecayControl = useLocalStorageNumberWithRef("reverbDecay", 2);
-    const harmonicsGammaControl = useLocalStorageNumberWithRef("harmonicsGamma", 0.5);
-    const harmonicsGammaMinControl = useLocalStorageNumberWithRef("harmonicsGammaMin", 0.1);
-    const harmonicsGammaMaxControl = useLocalStorageNumberWithRef("harmonicsGammaMax", 1);
-    const evenHarmonicsScaleControl = useLocalStorageNumberWithRef("evenHarmonicsScale", 0.5);
-    const evenHarmonicsScaleMinControl = useLocalStorageNumberWithRef("evenHarmonicsScaleMin", 0);
-    const evenHarmonicsScaleMaxControl = useLocalStorageNumberWithRef("evenHarmonicsScaleMax", 1);
-    const pitchBendControl = useLocalStorageNumberWithRef("pitchBend", 0);
-    const pitchBendMinControl = useLocalStorageNumberWithRef("pitchBendMin", -2);
-    const pitchBendMaxControl = useLocalStorageNumberWithRef("pitchBendMax", 2);
-    const attackMinControl = useLocalStorageNumberWithRef("attackMin", 0.001);
-    const attackMaxControl = useLocalStorageNumberWithRef("attackMax", 1);
-    const decayMinControl = useLocalStorageNumberWithRef("decayMin", 0.001);
-    const decayMaxControl = useLocalStorageNumberWithRef("decayMax", 2);
-    const sustainMinControl = useLocalStorageNumberWithRef("sustainMin", 0);
-    const sustainMaxControl = useLocalStorageNumberWithRef("sustainMax", 1);
-    const releaseMinControl = useLocalStorageNumberWithRef("releaseMin", 0.001);
-    const releaseMaxControl = useLocalStorageNumberWithRef("releaseMax", 2);
-    const volumeMinControl = useLocalStorageNumberWithRef("volumeMin", 0);
-    const volumeMaxControl = useLocalStorageNumberWithRef("volumeMax", 1);
-    const reverbMixMinControl = useLocalStorageNumberWithRef("reverbMixMin", 0);
-    const reverbMixMaxControl = useLocalStorageNumberWithRef("reverbMixMax", 1);
-    const reverbTimeMinControl = useLocalStorageNumberWithRef("reverbTimeMin", 0.1);
-    const reverbTimeMaxControl = useLocalStorageNumberWithRef("reverbTimeMax", 6);
-    const reverbDecayMinControl = useLocalStorageNumberWithRef("reverbDecayMin", 0.5);
-    const reverbDecayMaxControl = useLocalStorageNumberWithRef("reverbDecayMax", 6);
+    const attackControl = useRangedControl("attack", 0.01, "attackMin", 0.001, "attackMax", 1);
+    const decayControl = useRangedControl("decay", 0.2, "decayMin", 0.001, "decayMax", 2);
+    const sustainControl = useRangedControl("sustain", 0.7, "sustainMin", 0, "sustainMax", 1);
+    const releaseControl = useRangedControl("release", 0.5, "releaseMin", 0.001, "releaseMax", 2);
+    const volumeControl = useRangedControl("volume", 0.7, "volumeMin", 0, "volumeMax", 1);
+    const reverbMixControl = useRangedControl("reverbMix", 0.3, "reverbMixMin", 0, "reverbMixMax", 1);
+    const reverbTimeControl = useRangedControl("reverbTime", 2, "reverbTimeMin", 0.1, "reverbTimeMax", 6);
+    const reverbDecayControl = useRangedControl("reverbDecay", 2, "reverbDecayMin", 0.5, "reverbDecayMax", 6);
+    const harmonicsGammaControl = useRangedControl("harmonicsGamma", 0.5, "harmonicsGammaMin", 0.1, "harmonicsGammaMax", 1);
+    const evenHarmonicsScaleControl = useRangedControl("evenHarmonicsScale", 0.5, "evenHarmonicsScaleMin", 0, "evenHarmonicsScaleMax", 1);
+    const pitchBendControl = useRangedControl("pitchBend", 0, "pitchBendMin", -2, "pitchBendMax", 2);
     const [midiAccess, setMidiAccess] = useState(null);
     const [midiInputs, setMidiInputs] = useState([]);
     const [selectedInputIds, setSelectedInputIds] = useState(() => JSON.parse(localStorage.getItem('selectedInputIds')) || []);
@@ -894,17 +885,17 @@ function App() {
 
         const handleCcValue = (controlId, normalizedValue) => {
             const mapping = {
-                    attackControl: { setState: attackControl.set, min: attackMinControl.current, max: attackMaxControl.current },
-                    decayControl: { setState: decayControl.set, min: decayMinControl.current, max: decayMaxControl.current },
-                    sustainControl: { setState: sustainControl.set, min: sustainMinControl.current, max: sustainMaxControl.current },
-                    releaseControl: { setState: releaseControl.set, min: releaseMinControl.current, max: releaseMaxControl.current },
-                    volumeControl: { setState: volumeControl.set, min: volumeMinControl.current, max: volumeMaxControl.current },
-                    reverbMixControl: { setState: reverbMixControl.set, min: reverbMixMinControl.current, max: reverbMixMaxControl.current },
-                    harmonicsGammaControl: { setState: harmonicsGammaControl.set, min: harmonicsGammaMinControl.current, max: harmonicsGammaMaxControl.current },
-                    evenHarmonicsScaleControl: { setState: evenHarmonicsScaleControl.set, min: evenHarmonicsScaleMinControl.current, max: evenHarmonicsScaleMaxControl.current },
-                    reverbTimeControl: { setState: reverbTimeControl.set, min: reverbTimeMinControl.current, max: reverbTimeMaxControl.current },
-                    reverbDecayControl: { setState: reverbDecayControl.set, min: reverbDecayMinControl.current, max: reverbDecayMaxControl.current },
-                    pitchBendControl: { setState: pitchBendControl.set, min: pitchBendMinControl.current, max: pitchBendMaxControl.current }
+                attackControl: { setState: attackControl.set, min: attackControl.min.current, max: attackControl.max.current },
+                decayControl: { setState: decayControl.set, min: decayControl.min.current, max: decayControl.max.current },
+                sustainControl: { setState: sustainControl.set, min: sustainControl.min.current, max: sustainControl.max.current },
+                releaseControl: { setState: releaseControl.set, min: releaseControl.min.current, max: releaseControl.max.current },
+                volumeControl: { setState: volumeControl.set, min: volumeControl.min.current, max: volumeControl.max.current },
+                reverbMixControl: { setState: reverbMixControl.set, min: reverbMixControl.min.current, max: reverbMixControl.max.current },
+                harmonicsGammaControl: { setState: harmonicsGammaControl.set, min: harmonicsGammaControl.min.current, max: harmonicsGammaControl.max.current },
+                evenHarmonicsScaleControl: { setState: evenHarmonicsScaleControl.set, min: evenHarmonicsScaleControl.min.current, max: evenHarmonicsScaleControl.max.current },
+                reverbTimeControl: { setState: reverbTimeControl.set, min: reverbTimeControl.min.current, max: reverbTimeControl.max.current },
+                reverbDecayControl: { setState: reverbDecayControl.set, min: reverbDecayControl.min.current, max: reverbDecayControl.max.current },
+                pitchBendControl: { setState: pitchBendControl.set, min: pitchBendControl.min.current, max: pitchBendControl.max.current }
             };
 
       const control = mapping[controlId];
@@ -1176,15 +1167,15 @@ function App() {
                             label="Attack"
                             value={attackControl.current}
                             onChange={attackControl.set}
-                            min={attackMinControl.current}
-                            max={attackMaxControl.current}
+                            min={attackControl.min.current}
+                            max={attackControl.max.current}
                             step={0.001}
                             numberStep={0.001}
                             unit="s"
                             decimals={3}
                             inputId="attackControl"
-                            onMinChange={attackMinControl.set}
-                            onMaxChange={attackMaxControl.set}
+                            onMinChange={attackControl.min.set}
+                            onMaxChange={attackControl.max.set}
                             onMidiLearn={() => startMidiLearn('attackControl')}
                             isMidiLearning={learningControlId === 'attackControl'}
                             midiMapping={ccMappings.attackControl}
@@ -1194,15 +1185,15 @@ function App() {
                             label="Decay"
                             value={decayControl.current}
                             onChange={decayControl.set}
-                            min={decayMinControl.current}
-                            max={decayMaxControl.current}
+                            min={decayControl.min.current}
+                            max={decayControl.max.current}
                             step={0.001}
                             numberStep={0.001}
                             unit="s"
                             decimals={3}
                             inputId="decayControl"
-                            onMinChange={decayMinControl.set}
-                            onMaxChange={decayMaxControl.set}
+                            onMinChange={decayControl.min.set}
+                            onMaxChange={decayControl.max.set}
                             onMidiLearn={() => startMidiLearn('decayControl')}
                             isMidiLearning={learningControlId === 'decayControl'}
                             midiMapping={ccMappings.decayControl}
@@ -1212,15 +1203,15 @@ function App() {
                             label="Sustain"
                             value={sustainControl.current}
                             onChange={sustainControl.set}
-                            min={sustainMinControl.current}
-                            max={sustainMaxControl.current}
+                            min={sustainControl.min.current}
+                            max={sustainControl.max.current}
                             step={0.01}
                             numberStep={0.01}
                             unit=""
                             decimals={2}
                             inputId="sustainControl"
-                            onMinChange={sustainMinControl.set}
-                            onMaxChange={sustainMaxControl.set}
+                            onMinChange={sustainControl.min.set}
+                            onMaxChange={sustainControl.max.set}
                             onMidiLearn={() => startMidiLearn('sustainControl')}
                             isMidiLearning={learningControlId === 'sustainControl'}
                             midiMapping={ccMappings.sustainControl}
@@ -1230,15 +1221,15 @@ function App() {
                             label="Release"
                             value={releaseControl.current}
                             onChange={releaseControl.set}
-                            min={releaseMinControl.current}
-                            max={releaseMaxControl.current}
+                            min={releaseControl.min.current}
+                            max={releaseControl.max.current}
                             step={0.001}
                             numberStep={0.001}
                             unit="s"
                             decimals={3}
                             inputId="releaseControl"
-                            onMinChange={releaseMinControl.set}
-                            onMaxChange={releaseMaxControl.set}
+                            onMinChange={releaseControl.min.set}
+                            onMaxChange={releaseControl.max.set}
                             onMidiLearn={() => startMidiLearn('releaseControl')}
                             isMidiLearning={learningControlId === 'releaseControl'}
                             midiMapping={ccMappings.releaseControl}
@@ -1259,15 +1250,15 @@ function App() {
                             label="Volume"
                             value={volumeControl.current}
                             onChange={volumeControl.set}
-                            min={volumeMinControl.current}
-                            max={volumeMaxControl.current}
+                            min={volumeControl.min.current}
+                            max={volumeControl.max.current}
                             step={0.01}
                             numberStep={0.01}
                             unit=""
                             decimals={2}
                             inputId="volumeControl"
-                            onMinChange={volumeMinControl.set}
-                            onMaxChange={volumeMaxControl.set}
+                            onMinChange={volumeControl.min.set}
+                            onMaxChange={volumeControl.max.set}
                             onMidiLearn={() => startMidiLearn('volumeControl')}
                             isMidiLearning={learningControlId === 'volumeControl'}
                             midiMapping={ccMappings.volumeControl}
@@ -1277,15 +1268,15 @@ function App() {
                             label="Reverb Mix"
                             value={reverbMixControl.current}
                             onChange={reverbMixControl.set}
-                            min={reverbMixMinControl.current}
-                            max={reverbMixMaxControl.current}
+                            min={reverbMixControl.min.current}
+                            max={reverbMixControl.max.current}
                             step={0.01}
                             numberStep={0.01}
                             unit=""
                             decimals={2}
                             inputId="reverbMixControl"
-                            onMinChange={reverbMixMinControl.set}
-                            onMaxChange={reverbMixMaxControl.set}
+                            onMinChange={reverbMixControl.min.set}
+                            onMaxChange={reverbMixControl.max.set}
                             onMidiLearn={() => startMidiLearn('reverbMixControl')}
                             isMidiLearning={learningControlId === 'reverbMixControl'}
                             midiMapping={ccMappings.reverbMixControl}
@@ -1295,15 +1286,15 @@ function App() {
                             label="Reverb Time"
                             value={reverbTimeControl.current}
                             onChange={reverbTimeControl.set}
-                            min={reverbTimeMinControl.current}
-                            max={reverbTimeMaxControl.current}
+                            min={reverbTimeControl.min.current}
+                            max={reverbTimeControl.max.current}
                             step={0.1}
                             numberStep={0.1}
                             unit="s"
                             decimals={2}
                             inputId="reverbTimeControl"
-                            onMinChange={reverbTimeMinControl.set}
-                            onMaxChange={reverbTimeMaxControl.set}
+                            onMinChange={reverbTimeControl.min.set}
+                            onMaxChange={reverbTimeControl.max.set}
                             onMidiLearn={() => startMidiLearn('reverbTimeControl')}
                             isMidiLearning={learningControlId === 'reverbTimeControl'}
                             midiMapping={ccMappings.reverbTimeControl}
@@ -1313,15 +1304,15 @@ function App() {
                             label="Reverb Decay"
                             value={reverbDecayControl.current}
                             onChange={reverbDecayControl.set}
-                            min={reverbDecayMinControl.current}
-                            max={reverbDecayMaxControl.current}
+                            min={reverbDecayControl.min.current}
+                            max={reverbDecayControl.max.current}
                             step={0.1}
                             numberStep={0.1}
                             unit=""
                             decimals={2}
                             inputId="reverbDecayControl"
-                            onMinChange={reverbDecayMinControl.set}
-                            onMaxChange={reverbDecayMaxControl.set}
+                            onMinChange={reverbDecayControl.min.set}
+                            onMaxChange={reverbDecayControl.max.set}
                             onMidiLearn={() => startMidiLearn('reverbDecayControl')}
                             isMidiLearning={learningControlId === 'reverbDecayControl'}
                             midiMapping={ccMappings.reverbDecayControl}
@@ -1332,15 +1323,15 @@ function App() {
                             label="Harmonics Gamma"
                             value={harmonicsGammaControl.current}
                             onChange={harmonicsGammaControl.set}
-                            min={harmonicsGammaMinControl.current}
-                            max={harmonicsGammaMaxControl.current}
+                            min={harmonicsGammaControl.min.current}
+                            max={harmonicsGammaControl.max.current}
                             step={0.01}
                             numberStep={0.01}
                             unit=""
                             decimals={2}
                             inputId="harmonicsGammaControl"
-                            onMinChange={harmonicsGammaMinControl.set}
-                            onMaxChange={harmonicsGammaMaxControl.set}
+                            onMinChange={harmonicsGammaControl.min.set}
+                            onMaxChange={harmonicsGammaControl.max.set}
                             onMidiLearn={() => startMidiLearn('harmonicsGammaControl')}
                             isMidiLearning={learningControlId === 'harmonicsGammaControl'}
                             midiMapping={ccMappings.harmonicsGammaControl}
@@ -1350,15 +1341,15 @@ function App() {
                             label="Even Harmonics Scale"
                             value={evenHarmonicsScaleControl.current}
                             onChange={evenHarmonicsScaleControl.set}
-                            min={evenHarmonicsScaleMinControl.current}
-                            max={evenHarmonicsScaleMaxControl.current}
+                            min={evenHarmonicsScaleControl.min.current}
+                            max={evenHarmonicsScaleControl.max.current}
                             step={0.01}
                             numberStep={0.01}
                             unit=""
                             decimals={2}
                             inputId="evenHarmonicsScaleControl"
-                            onMinChange={evenHarmonicsScaleMinControl.set}
-                            onMaxChange={evenHarmonicsScaleMaxControl.set}
+                            onMinChange={evenHarmonicsScaleControl.min.set}
+                            onMaxChange={evenHarmonicsScaleControl.max.set}
                             onMidiLearn={() => startMidiLearn('evenHarmonicsScaleControl')}
                             isMidiLearning={learningControlId === 'evenHarmonicsScaleControl'}
                             midiMapping={ccMappings.evenHarmonicsScaleControl}
@@ -1368,15 +1359,15 @@ function App() {
                             label="Pitch Bend"
                             value={pitchBendControl.current}
                             onChange={pitchBendControl.set}
-                            min={pitchBendMinControl.current}
-                            max={pitchBendMaxControl.current}
+                            min={pitchBendControl.min.current}
+                            max={pitchBendControl.max.current}
                             step={0.01}
                             numberStep={0.01}
                             unit=" semitones"
                             decimals={2}
                             inputId="pitchBendControl"
-                            onMinChange={pitchBendMinControl.set}
-                            onMaxChange={pitchBendMaxControl.set}
+                            onMinChange={pitchBendControl.min.set}
+                            onMaxChange={pitchBendControl.max.set}
                             onMidiLearn={() => startMidiLearn('pitchBendControl')}
                             isMidiLearning={learningControlId === 'pitchBendControl'}
                             midiMapping={ccMappings.pitchBendControl}
