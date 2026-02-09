@@ -33,6 +33,12 @@ const harmonicsCount = 20;
 
 const notesPerOctave = 12;
 
+function mapCcValue(val) {
+    // Map 0-127 to a curve that is more sensitive at the low end for better control over subtle changes
+    // makes sure both 63 and 64 map to 0.5 for controls that rest at the center
+    return val < 64 ? val / 126 : ((val - 64) / 126 + 0.5);
+}
+
 // Helper hook to create state with matching ref for callback access
 function useStateWithRef(initialValue) {
     const [state, setState] = useState(initialValue);
@@ -772,7 +778,7 @@ function App() {
       // Handle CC mapping for sliders
       if (true) {
           const cc = data1;
-          const value = data2 / 127;
+          const value = mapCcValue(data2);
           for (const [controlId, mapping] of Object.entries(ccMappingsRef.current)) {
               if (mapping.channel === channel && mapping.cc === cc) {
                 console.log(`Mapped CC${cc} on channel ${channel + 1} to ${controlId} with value ${value}`);
