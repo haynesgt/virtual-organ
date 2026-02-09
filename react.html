@@ -31,6 +31,8 @@ const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
 const harmonicsCount = 20;
 
+const notesPerOctave = 12;
+
 // Helper hook to create state with matching ref for callback access
 function useStateWithRef(initialValue) {
     const [state, setState] = useState(initialValue);
@@ -226,15 +228,15 @@ class NoteInstrument {
     setPitchBend(semitones) {
         this.pitchBend = semitones;
         Object.entries(this.noteOscs).forEach(([note, { osc }]) => {
-            const baseFrequency = 440 * Math.pow(2, (Number(note) - 69) / 12);
-            const bendedFrequency = baseFrequency * Math.pow(2, semitones / 12);
+            const baseFrequency = 440 * Math.pow(2, (Number(note) - 69) / notesPerOctave);
+            const bendedFrequency = baseFrequency * Math.pow(2, semitones / notesPerOctave);
             osc.frequency.setValueAtTime(bendedFrequency, audioCtx.currentTime);
         });
     }
 
     startNote(note, velocity = 1.0) {
-        const baseFrequency = 440 * Math.pow(2, (note - 69) / 12);
-        const noteFrequency = baseFrequency * Math.pow(2, this.pitchBend / 12);
+        const baseFrequency = 440 * Math.pow(2, (note - 69) / notesPerOctave);
+        const noteFrequency = baseFrequency * Math.pow(2, this.pitchBend / notesPerOctave);
         const noteWavelength = 1 / noteFrequency;
         const attack = Math.max(this.envelope.attack, noteWavelength);
         const existing = this.noteOscs[note];
@@ -500,6 +502,7 @@ function App() {
     const activeInputsRef = useRef(new Map());
     const learningControlIdRef = useRef(null);
     const ccMappingsRef = useRef({});
+    const autoStopTimeoutRef = useRef(null);
     const adsrCanvasRef = useRef(null);
     const harmonicsCanvasRef = useRef(null);
     const waveformCanvasRef = useRef(null);
@@ -746,10 +749,24 @@ function App() {
           await audioCtx.resume();
           setIsAudioOn(true);
       }
-      if (command === 0x90) {
+      if (command === 0x90 && data2 > 0) {
+          if (autoStopTimeoutRef.current) {
+              clearTimeout(autoStopTimeoutRef.current);
+              autoStopTimeoutRef.current = null;
+          }
           instrument.startNote(data1, data2 / 127);
-      } else if (command === 0x80) {
+      } else if (command === 0x80 || (command === 0x90 && data2 === 0)) {
           instrument.stopNote(data1);
+          if (isRecordingRef.current) {
+              if (autoStopTimeoutRef.current) {
+                  clearTimeout(autoStopTimeoutRef.current);
+              }
+              autoStopTimeoutRef.current = setTimeout(() => {
+                  if (isRecordingRef.current) {
+                      stopRecording();
+                  }
+              }, 60000);
+          }
       }
 
       // Handle CC mapping for sliders
@@ -798,7 +815,11 @@ function App() {
   };
 
   const stopRecording = () => {
-      if (mediaRecorderRef.current && isRecording) {
+      if (mediaRecorderRef.current && isRecordingRef.current) {
+          if (autoStopTimeoutRef.current) {
+              clearTimeout(autoStopTimeoutRef.current);
+              autoStopTimeoutRef.current = null;
+          }
           mediaRecorderRef.current.stop();
           setIsRecording(false);
           if (recordingTimerRef.current) {
