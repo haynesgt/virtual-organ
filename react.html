@@ -332,6 +332,29 @@ function SliderControl({
     midiMapping,
     onMidiClear
 }) {
+    const [valueInput, setValueInput] = useState(value === undefined ? "" : String(value));
+    const [minInput, setMinInput] = useState(min === undefined ? "" : String(min));
+    const [maxInput, setMaxInput] = useState(max === undefined ? "" : String(max));
+    const [activeField, setActiveField] = useState(null);
+
+    useEffect(() => {
+        if (activeField !== "value") {
+            setValueInput(value === undefined ? "" : String(value));
+        }
+    }, [value, activeField]);
+
+    useEffect(() => {
+        if (activeField !== "min") {
+            setMinInput(min === undefined ? "" : String(min));
+        }
+    }, [min, activeField]);
+
+    useEffect(() => {
+        if (activeField !== "max") {
+            setMaxInput(max === undefined ? "" : String(max));
+        }
+    }, [max, activeField]);
+
     const formatValue = (val) => {
         if (Number.isNaN(val)) {
             return "";
@@ -343,51 +366,69 @@ function SliderControl({
     };
 
     const handleNumberChange = (e) => {
-        const raw = e.target.value;
-        if (raw === "") {
+        setValueInput(e.target.value);
+    };
+
+    const handleNumberBlur = () => {
+        setActiveField(null);
+        const parsed = Number(valueInput);
+        if (Number.isNaN(parsed)) {
+            setValueInput(formatValue(value));
             return;
         }
-        const parsed = Number(raw);
-        if (!Number.isNaN(parsed)) {
-            const clamped = Math.min(max, Math.max(min, parsed));
-            onChange(clamped);
-        }
+        const clamped = Math.min(max, Math.max(min, parsed));
+        onChange(clamped);
+        setValueInput(formatValue(clamped));
     };
 
     const handleMinChange = (e) => {
         if (!onMinChange) {
             return;
         }
-        const raw = e.target.value;
-        if (raw === "") {
+        setMinInput(e.target.value);
+    };
+
+    const handleMinBlur = () => {
+        if (!onMinChange) {
             return;
         }
-        const parsed = Number(raw);
-        if (!Number.isNaN(parsed)) {
-            const nextMin = Math.min(parsed, max);
-            onMinChange(nextMin);
-            if (value < nextMin) {
-                onChange(nextMin);
-            }
+        setActiveField(null);
+        const parsed = Number(minInput);
+        if (Number.isNaN(parsed)) {
+            setMinInput(String(min));
+            return;
         }
+        const nextMin = Math.min(parsed, max);
+        onMinChange(nextMin);
+        if (value < nextMin) {
+            onChange(nextMin);
+        }
+        setMinInput(String(nextMin));
     };
 
     const handleMaxChange = (e) => {
         if (!onMaxChange) {
             return;
         }
-        const raw = e.target.value;
-        if (raw === "") {
+        setMaxInput(e.target.value);
+    };
+
+    const handleMaxBlur = () => {
+        if (!onMaxChange) {
             return;
         }
-        const parsed = Number(raw);
-        if (!Number.isNaN(parsed)) {
-            const nextMax = Math.max(parsed, min);
-            onMaxChange(nextMax);
-            if (value > nextMax) {
-                onChange(nextMax);
-            }
+        setActiveField(null);
+        const parsed = Number(maxInput);
+        if (Number.isNaN(parsed)) {
+            setMaxInput(String(max));
+            return;
         }
+        const nextMax = Math.max(parsed, min);
+        onMaxChange(nextMax);
+        if (value > nextMax) {
+            onChange(nextMax);
+        }
+        setMaxInput(String(nextMax));
     };
 
     return (
@@ -430,8 +471,10 @@ function SliderControl({
                             min={Number.MIN_SAFE_INTEGER}
                             max={max}
                             step={numberStep || step}
-                            value={min}
+                            value={minInput}
                             onChange={handleMinChange}
+                            onFocus={() => setActiveField("min")}
+                            onBlur={handleMinBlur}
                         />
                     </div>
                     <div className="d-flex align-items-center mr-2">
@@ -443,8 +486,10 @@ function SliderControl({
                             min={min}
                             max={Number.MAX_SAFE_INTEGER}
                             step={numberStep || step}
-                            value={max}
+                            value={maxInput}
                             onChange={handleMaxChange}
+                            onFocus={() => setActiveField("max")}
+                            onBlur={handleMaxBlur}
                         />
                     </div>
                     </>
@@ -457,8 +502,10 @@ function SliderControl({
                         min={min}
                         max={max}
                         step={numberStep || step}
-                        value={value}
+                        value={valueInput}
                         onChange={handleNumberChange}
+                        onFocus={() => setActiveField("value")}
+                        onBlur={handleNumberBlur}
                     />
                     <span className="text-muted small">{formatValue(value)}{unit || ""}</span>
                 </div>
