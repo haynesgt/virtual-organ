@@ -575,6 +575,8 @@ function VoicePanel({
     const pitchBendControl = useRangedControl(`${voice.id}:pitchBend`, 0, `${voice.id}:pitchBendMin`, -2, `${voice.id}:pitchBendMax`, 2);
     const noteMinControl = useRangedControl(`${voice.id}:noteMin`, 0, `${voice.id}:noteMinMin`, 0, `${voice.id}:noteMinMax`, 127);
     const noteMaxControl = useRangedControl(`${voice.id}:noteMax`, 127, `${voice.id}:noteMaxMin`, 0, `${voice.id}:noteMaxMax`, 127);
+    const noteMinEnabled = useLocalStorageNumberWithRef(`${voice.id}:noteMinEnabled`, 1);
+    const noteMaxEnabled = useLocalStorageNumberWithRef(`${voice.id}:noteMaxEnabled`, 1);
     const adsrCanvasRef = useRef(null);
     const harmonicsCanvasRef = useRef(null);
     const waveformCanvasRef = useRef(null);
@@ -783,8 +785,12 @@ function VoicePanel({
         const rangeCleanup = registerNoteRangeTarget(voice.id, {
             minValueRef: noteMinControl,
             maxValueRef: noteMaxControl,
+            minEnabledRef: noteMinEnabled,
+            maxEnabledRef: noteMaxEnabled,
             setMin: noteMinControl.set,
-            setMax: noteMaxControl.set
+            setMax: noteMaxControl.set,
+            setMinEnabled: noteMinEnabled.set,
+            setMaxEnabled: noteMaxEnabled.set
         });
 
         return () => {
@@ -822,7 +828,9 @@ function VoicePanel({
         pitchBendControl.min,
         pitchBendControl.max,
         noteMinControl.set,
-        noteMaxControl.set
+        noteMaxControl.set,
+        noteMinEnabled.set,
+        noteMaxEnabled.set
     ]);
 
     const isLearningMin = noteLearnTarget && noteLearnTarget.voiceId === voice.id && noteLearnTarget.kind === "min";
@@ -879,12 +887,27 @@ function VoicePanel({
                                 step={1}
                                 value={noteMinControl.current}
                                 onChange={(e) => noteMinControl.set(Number(e.target.value))}
+                                disabled={!noteMinEnabled.current}
                             />
                             <button
                                 className={`btn btn-sm ${isLearningMin ? "btn-warning" : "btn-outline-secondary"}`}
-                                onClick={() => (isLearningMin ? stopNoteLearn() : startNoteLearn(voice.id, "min"))}
+                                onClick={() => {
+                                    if (isLearningMin) {
+                                        stopNoteLearn();
+                                    } else {
+                                        noteMinEnabled.set(1);
+                                        startNoteLearn(voice.id, "min");
+                                    }
+                                }}
+                                disabled={!noteMinEnabled.current && !isLearningMin}
                             >
                                 {isLearningMin ? "Listening..." : "Learn Min"}
+                            </button>
+                            <button
+                                className="btn btn-sm btn-outline-dark ml-2"
+                                onClick={() => noteMinEnabled.set(noteMinEnabled.current ? 0 : 1)}
+                            >
+                                {noteMinEnabled.current ? "No Min" : "Limit Min"}
                             </button>
                         </div>
                     </div>
@@ -900,12 +923,27 @@ function VoicePanel({
                                 step={1}
                                 value={noteMaxControl.current}
                                 onChange={(e) => noteMaxControl.set(Number(e.target.value))}
+                                disabled={!noteMaxEnabled.current}
                             />
                             <button
                                 className={`btn btn-sm ${isLearningMax ? "btn-warning" : "btn-outline-secondary"}`}
-                                onClick={() => (isLearningMax ? stopNoteLearn() : startNoteLearn(voice.id, "max"))}
+                                onClick={() => {
+                                    if (isLearningMax) {
+                                        stopNoteLearn();
+                                    } else {
+                                        noteMaxEnabled.set(1);
+                                        startNoteLearn(voice.id, "max");
+                                    }
+                                }}
+                                disabled={!noteMaxEnabled.current && !isLearningMax}
                             >
                                 {isLearningMax ? "Listening..." : "Learn Max"}
+                            </button>
+                            <button
+                                className="btn btn-sm btn-outline-dark ml-2"
+                                onClick={() => noteMaxEnabled.set(noteMaxEnabled.current ? 0 : 1)}
+                            >
+                                {noteMaxEnabled.current ? "No Max" : "Limit Max"}
                             </button>
                         </div>
                     </div>
@@ -1157,6 +1195,9 @@ function App() {
       const logMin = Math.log2(minFreq);
       const logMax = Math.log2(maxFreq);
 
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, width, height);
+
       const renderFrame = () => {
           analyser.getByteFrequencyData(dataArray);
 
@@ -1174,8 +1215,8 @@ function App() {
               const t = (logFreq - logMin) / (logMax - logMin);
               const y = height - Math.round(t * height);
               const hue = 220 - value * 220;
-              const light = 20 + value * 60;
-              ctx.fillStyle = `hsl(${hue}, 100%, ${light}%)`;
+              const light = 85 - value * 55;
+              ctx.fillStyle = `hsl(${hue}, 90%, ${light}%)`;
               ctx.fillRect(width - 1, y, 1, Math.max(1, height / bufferLength));
           }
 
@@ -1266,10 +1307,16 @@ function App() {
                           if (data1 > maxValue) {
                               rangeTarget.setMax(data1);
                           }
+                          if (!rangeTarget.minEnabledRef.current) {
+                              rangeTarget.setMinEnabled(1);
+                          }
                       } else {
                           rangeTarget.setMax(data1);
                           if (data1 < minValue) {
                               rangeTarget.setMin(data1);
+                          }
+                          if (!rangeTarget.maxEnabledRef.current) {
+                              rangeTarget.setMaxEnabled(1);
                           }
                       }
                   }
@@ -1282,8 +1329,12 @@ function App() {
           }
           targetVoices.forEach((voice) => {
               const rangeTarget = noteRangeTargetsRef.current[voice.id];
-              const minNote = rangeTarget ? Math.min(rangeTarget.minValueRef.current, rangeTarget.maxValueRef.current) : 0;
-              const maxNote = rangeTarget ? Math.max(rangeTarget.minValueRef.current, rangeTarget.maxValueRef.current) : 127;
+              const minValue = rangeTarget ? rangeTarget.minValueRef.current : 0;
+              const maxValue = rangeTarget ? rangeTarget.maxValueRef.current : 127;
+              const minEnabled = rangeTarget ? Boolean(rangeTarget.minEnabledRef.current) : true;
+              const maxEnabled = rangeTarget ? Boolean(rangeTarget.maxEnabledRef.current) : true;
+              const minNote = minEnabled ? Math.min(minValue, maxValue) : 0;
+              const maxNote = maxEnabled ? Math.max(minValue, maxValue) : 127;
               if (data1 < minNote || data1 > maxNote) {
                   return;
               }
@@ -1856,7 +1907,7 @@ function App() {
                         ref={spectrogramCanvasRef}
                         width="320"
                         height="140"
-                        style={{ width: "100%", background: "#000", borderRadius: "6px" }}
+                        style={{ width: "100%", background: "#fff", borderRadius: "6px" }}
                     />
                 </div>
             </div>
