@@ -189,7 +189,7 @@ class NoteInstrument {
     setVolume(value) {
         this.rootNode.masterGain.gain.cancelScheduledValues(audioCtx.currentTime);
         this.rootNode.masterGain.gain.setValueAtTime(this.rootNode.masterGain.gain.value, audioCtx.currentTime);
-        this.rootNode.masterGain.gain.linearRampToValueAtTime(value, audioCtx.currentTime + 0.1);
+        this.rootNode.masterGain.gain.linearRampToValueAtTime(value ** 2, audioCtx.currentTime + 0.1);
     }
 
     setReverbMix(value) {
@@ -212,7 +212,7 @@ class NoteInstrument {
         }
         return audioCtx.createPeriodicWave(
             new Float32Array(harmonicsCount),
-            imag,{ disableNormalization: false }
+            imag,
         );
     }
 
@@ -245,7 +245,7 @@ class NoteInstrument {
         const baseFrequency = 440 * Math.pow(2, (note - 69) / notesPerOctave);
         const noteFrequency = baseFrequency * Math.pow(2, this.pitchBend / notesPerOctave);
         const noteWavelength = 1 / noteFrequency;
-        const attack = Math.max(this.envelope.attack, noteWavelength);
+        const attack = Math.max(this.envelope.attack, noteWavelength) / 2;
         const existing = this.noteOscs[note];
         if (existing) {
             if (existing.gainNode.gain.value === 0) {
@@ -269,7 +269,7 @@ class NoteInstrument {
         osc.setPeriodicWave(wave);
         osc.frequency.value = noteFrequency;
 
-        const now = audioCtx.currentTime;
+        const now = audioCtx.currentTime + 0.01; // slight delay to avoid clicks
         gainNode.gain.setValueAtTime(0, now);
         gainNode.gain.linearRampToValueAtTime(velocity, now + attack);
         gainNode.gain.linearRampToValueAtTime(velocity * this.envelope.sustain, now + attack + this.envelope.decay);
@@ -278,7 +278,7 @@ class NoteInstrument {
         gainNode.connect(this.rootNode.dryGain);
         gainNode.connect(this.rootNode.reverbNode);
 
-        osc.start();
+        osc.start(now);
         this.noteOscs[note] = { osc, gainNode };
     }
 
@@ -286,8 +286,8 @@ class NoteInstrument {
         const existing = this.noteOscs[note];
         if (existing) {
             const now = audioCtx.currentTime;
-            existing.gainNode.gain.cancelScheduledValues(now);
-            existing.gainNode.gain.setValueAtTime(existing.gainNode.gain.value, now);
+            existing.gainNode.gain.cancelScheduledValues(audioCtx.currentTime);
+            existing.gainNode.gain.setValueAtTime(existing.gainNode.gain.value, audioCtx.currentTime);
             existing.gainNode.gain.linearRampToValueAtTime(0, now + this.envelope.release);
             setTimeout(() => {
                 if (existing.gainNode.gain.value === 0) {
