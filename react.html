@@ -56,6 +56,7 @@ function useLocalStorageNumber(key, fallbackValue) {
     const [value, setValue] = useState(() => getStoredNumber(key, fallbackValue));
     
     useEffect(() => {
+        console.log(`Saving ${key} = ${value} to localStorage`);
         localStorage.setItem(key, value);
     }, [key, value]);
     
@@ -64,7 +65,7 @@ function useLocalStorageNumber(key, fallbackValue) {
 
 // Helper hook for localStorage-backed numeric state with ref
 function useLocalStorageNumberWithRef(key, fallbackValue) {
-    const [value, setValue] = useState(() => getStoredNumber(key, fallbackValue));
+    const [value, setValue] = useLocalStorageNumber(key, fallbackValue);
     const ref = useRef(value);
     
     const set = useCallback((newValue) => {
@@ -735,7 +736,7 @@ function App() {
       }
 
       // log hex message
-      console.log(`MIDI Message: ${[...event.data].map((b) => "0x" + b.toString(16).padStart(2, '0')).join(' ')}`);
+      console.log(`MIDI Message: ${[...event.data].map((b) => "0x" + b.toString(16).padStart(2, '0')).join(' ')} (${status}, ${channel}, ${command})`);
 
       // Handle CC learning mode
       if (learningControlIdRef.current) {
