@@ -657,6 +657,7 @@ function VoicePanel({
     const harmonicsGammaControl = useRangedControl(`${voice.id}:harmonicsGamma`, 0.5, `${voice.id}:harmonicsGammaMin`, 0.1, `${voice.id}:harmonicsGammaMax`, 1);
     const evenHarmonicsScaleControl = useRangedControl(`${voice.id}:evenHarmonicsScale`, 0.5, `${voice.id}:evenHarmonicsScaleMin`, 0, `${voice.id}:evenHarmonicsScaleMax`, 1);
     const pitchBendControl = useRangedControl(`${voice.id}:pitchBend`, 0, `${voice.id}:pitchBendMin`, -2, `${voice.id}:pitchBendMax`, 2);
+    const enabledControl = useRangedControl(`${voice.id}:enabled`, 1, `${voice.id}:enabledMin`, 0, `${voice.id}:enabledMax`, 1);
     const noteMinControl = useRangedControl(`${voice.id}:noteMin`, 0, `${voice.id}:noteMinMin`, 0, `${voice.id}:noteMinMax`, 127);
     const noteMaxControl = useRangedControl(`${voice.id}:noteMax`, 127, `${voice.id}:noteMaxMin`, 0, `${voice.id}:noteMaxMax`, 127);
     const noteMinEnabled = useLocalStorageNumberWithRef(`${voice.id}:noteMinEnabled`, 1);
@@ -720,6 +721,23 @@ function VoicePanel({
         }
         instrument.setPitchBend(pitchBendControl.current);
     }, [pitchBendControl.current, instrument]);
+
+    useEffect(() => {
+        if (!instrument) {
+            return;
+        }
+        if (enabledControl.current < 0.5) {
+            instrument.stopAllNotesImmediate();
+        }
+    }, [enabledControl.current, instrument]);
+
+    const summaryRow = (
+        <VoiceSummaryRow
+            voice={voice}
+            enabledControl={enabledControl}
+            volumeControl={volumeControl}
+        />
+    );
 
     useEffect(() => {
         const canvas = adsrCanvasRef.current;
@@ -848,6 +866,7 @@ function VoicePanel({
 
     useEffect(() => {
         const controlIds = [
+            ["enabled", enabledControl],
             ["attack", attackControl],
             ["decay", decayControl],
             ["sustain", sustainControl],
@@ -887,6 +906,9 @@ function VoicePanel({
         voice.id,
         registerCcTarget,
         registerNoteRangeTarget,
+        enabledControl.set,
+        enabledControl.min,
+        enabledControl.max,
         attackControl.set,
         attackControl.min,
         attackControl.max,
@@ -921,6 +943,10 @@ function VoicePanel({
     const isLearningMax = noteLearnTarget && noteLearnTarget.voiceId === voice.id && noteLearnTarget.kind === "max";
 
     return (
+        <>
+        <VoiceSummaryPortal>
+            {summaryRow}
+        </VoiceSummaryPortal>
         <div className="card mb-3">
             <div className="card-body">
                 <div className="d-flex align-items-center justify-content-between mb-3">
@@ -932,6 +958,30 @@ function VoicePanel({
                             onChange={(e) => onRename(voice.id, e.target.value)}
                         />
                         <small className="text-muted">{voice.id}</small>
+                    </div>
+                    <div className="d-flex align-items-center gap-2">
+                        <button
+                            className={`btn btn-sm ${enabledControl.current < 0.5 ? "btn-outline-secondary" : "btn-outline-success"}`}
+                            onClick={() => enabledControl.set(enabledControl.current < 0.5 ? 1 : 0)}
+                        >
+                            {enabledControl.current < 0.5 ? "Off" : "On"}
+                        </button>
+                        <button
+                            className={`btn btn-sm ${learningControlId === makeVoiceControlId(voice.id, "enabled") ? "btn-warning" : "btn-outline-secondary"}`}
+                            onClick={() => startMidiLearn(makeVoiceControlId(voice.id, "enabled"))}
+                            title="Learn MIDI toggle"
+                        >
+                            {learningControlId === makeVoiceControlId(voice.id, "enabled") ? "🎵" : "🎹"}
+                        </button>
+                        {ccMappings[makeVoiceControlId(voice.id, "enabled")] && (
+                            <button
+                                className="btn btn-sm btn-outline-danger"
+                                onClick={() => clearMidiBinding(makeVoiceControlId(voice.id, "enabled"))}
+                                title="Clear MIDI binding"
+                            >
+                                ✖
+                            </button>
+                        )}
                     </div>
                     {onRemove && (
                         <button className="btn btn-sm btn-outline-danger" onClick={() => onRemove(voice.id)}>
@@ -1211,7 +1261,52 @@ function VoicePanel({
                 </div>
             </div>
         </div>
+        </>
     );
+}
+
+function VoiceSummaryRow({ voice, enabledControl, volumeControl }) {
+    return (
+        <div className="d-flex align-items-center justify-content-between py-2 border-bottom">
+            <div className="d-flex align-items-center">
+                <strong className="mr-2">{voice.name}</strong>
+                <span className="text-muted small">{voice.id}</span>
+            </div>
+            <div className="d-flex align-items-center">
+                <button
+                    className={`btn btn-sm mr-3 ${enabledControl.current < 0.5 ? "btn-outline-secondary" : "btn-outline-success"}`}
+                    onClick={() => enabledControl.set(enabledControl.current < 0.5 ? 1 : 0)}
+                >
+                    {enabledControl.current < 0.5 ? "Off" : "On"}
+                </button>
+                <input
+                    type="range"
+                    min={volumeControl.min.current}
+                    max={volumeControl.max.current}
+                    step={0.01}
+                    value={volumeControl.current}
+                    onChange={(e) => volumeControl.set(Number(e.target.value))}
+                    style={{ width: "140px" }}
+                    className="form-control-range"
+                />
+                <span className="text-muted small ml-2">{volumeControl.current.toFixed(2)}</span>
+            </div>
+        </div>
+    );
+}
+
+function VoiceSummaryPortal({ children }) {
+    const [container, setContainer] = useState(null);
+
+    useEffect(() => {
+        setContainer(document.getElementById("voice-summary"));
+    }, []);
+
+    if (!container) {
+        return null;
+    }
+
+    return ReactDOM.createPortal(children, container);
 }
 
 function App() {
@@ -1250,6 +1345,7 @@ function App() {
     const voiceInstancesRef = useRef(new Map());
     const ccTargetsRef = useRef({});
     const [instrumentVersion, setInstrumentVersion] = useState(0);
+    const ccButtonStateRef = useRef({});
     const noteRangeTargetsRef = useRef({});
     const [noteLearnTarget, setNoteLearnTarget] = useState(null);
     const noteLearnTargetRef = useRef(null);
@@ -1431,6 +1527,10 @@ function App() {
               autoStopTimeoutRef.current = null;
           }
           targetVoices.forEach((voice) => {
+              const enabledValue = getStoredNumber(`${voice.id}:enabled`, 1);
+              if (enabledValue < 0.5) {
+                  return;
+              }
               const rangeTarget = noteRangeTargetsRef.current[voice.id];
               const minValue = rangeTarget ? rangeTarget.minValueRef.current : 0;
               const maxValue = rangeTarget ? rangeTarget.maxValueRef.current : 127;
@@ -1601,6 +1701,19 @@ function App() {
         const handleCcValue = (controlId, normalizedValue) => {
             const target = ccTargetsRef.current[controlId];
             if (!target) {
+                return;
+            }
+            if (controlId.endsWith(":enabled")) {
+                const previous = ccButtonStateRef.current[controlId] || 0;
+                const next = normalizedValue >= 0.5 ? 1 : 0;
+                if (previous === 0 && next === 1) {
+                    const parts = controlId.split(":");
+                    const voiceId = parts.length >= 3 ? parts.slice(1, -1).join(":") : null;
+                    const currentValue = voiceId ? getStoredNumber(`${voiceId}:enabled`, 1) : 1;
+                    const newValue = currentValue < 0.5 ? 1 : 0;
+                    target.setState(newValue);
+                }
+                ccButtonStateRef.current[controlId] = next;
                 return;
             }
             const min = target.minRef.current;
@@ -2307,6 +2420,16 @@ function App() {
                         style={{ width: "100%", background: "#fff", borderRadius: "6px" }}
                     />
                 </div>
+            </div>
+        </div>
+
+        <div className="card mb-3">
+            <div className="card-body">
+                <h2 className="h5">Instrument Summary</h2>
+                {voices.length === 0 && (
+                    <div className="text-muted small">No voices available.</div>
+                )}
+                <div id="voice-summary" />
             </div>
         </div>
 
