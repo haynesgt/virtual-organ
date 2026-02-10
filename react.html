@@ -155,6 +155,10 @@ class VoiceInstrument {
         this.voiceGain.gain.value = 0.7;
         this.voiceGain.connect(output.dryGain);
         this.voiceGain.connect(output.reverbSend);
+        this.lfoOsc = audioCtx.createOscillator();
+        this.lfoGain = audioCtx.createGain();
+        this.vibratoRate = 5;
+        this.vibratoDepth = 0;
         this.noteOscs = {};
         this.envelope = {
             attack: 0.01,
@@ -165,6 +169,11 @@ class VoiceInstrument {
         this.harmonicsGamma = 0.5;
         this.evenHarmonicsScale = 1.0;
         this.pitchBend = 0; // in semitones
+        this.lfoOsc.type = "sine";
+        this.lfoOsc.frequency.value = this.vibratoRate;
+        this.lfoGain.gain.value = this.vibratoDepth;
+        this.lfoOsc.connect(this.lfoGain);
+        this.lfoOsc.start();
     }
 
     setAttack(value) {
@@ -199,6 +208,16 @@ class VoiceInstrument {
         this.voiceGain.gain.cancelScheduledValues(audioCtx.currentTime);
         this.voiceGain.gain.setValueAtTime(this.voiceGain.gain.value, audioCtx.currentTime);
         this.voiceGain.gain.linearRampToValueAtTime(value ** 2, audioCtx.currentTime + 0.1);
+    }
+
+    setVibratoRate(value) {
+        this.vibratoRate = value;
+        this.lfoOsc.frequency.setValueAtTime(value, audioCtx.currentTime);
+    }
+
+    setVibratoDepth(value) {
+        this.vibratoDepth = value;
+        this.lfoGain.gain.setValueAtTime(value, audioCtx.currentTime);
     }
 
     _getPreiodicWave() {
@@ -302,6 +321,7 @@ class VoiceInstrument {
 
         osc.connect(gainNode);
         gainNode.connect(this.voiceGain);
+        this.lfoGain.connect(osc.detune);
 
         osc.start(now);
         this.noteOscs[note] = { osc, gainNode };
@@ -323,6 +343,7 @@ class VoiceInstrument {
             );
             setTimeout(() => {
                 if (existing.gainNode.gain.value === 0) {
+                    this.lfoGain.disconnect(existing.osc.detune);
                     existing.osc.stop();
                     existing.osc.disconnect();
                     existing.gainNode.disconnect();
@@ -343,6 +364,7 @@ class VoiceInstrument {
             try {
                 existing.gainNode.gain.cancelScheduledValues(audioCtx.currentTime);
                 existing.gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+                this.lfoGain.disconnect(existing.osc.detune);
                 existing.osc.stop();
             } catch (err) {
                 // Ignore node stop errors during shutdown.
@@ -355,6 +377,13 @@ class VoiceInstrument {
 
     dispose() {
         this.stopAllNotesImmediate();
+        try {
+            this.lfoOsc.stop();
+        } catch (err) {
+            // Ignore stop errors during shutdown.
+        }
+        this.lfoOsc.disconnect();
+        this.lfoGain.disconnect();
         this.voiceGain.disconnect();
     }
 }
@@ -407,6 +436,12 @@ const voiceValueDefaults = {
     pitchBend: 0,
     pitchBendMin: -2,
     pitchBendMax: 2,
+    vibratoRate: 5,
+    vibratoRateMin: 0,
+    vibratoRateMax: 12,
+    vibratoDepth: 0,
+    vibratoDepthMin: 0,
+    vibratoDepthMax: 100,
     noteMin: 0,
     noteMinMin: 0,
     noteMinMax: 127,
@@ -462,6 +497,8 @@ const applyVoiceSettingsFromStorage = (voiceId, instrument) => {
     instrument.setDecayCurve(getValue("decayCurve", voiceValueDefaults.decayCurve));
     instrument.setReleaseCurve(getValue("releaseCurve", voiceValueDefaults.releaseCurve));
     instrument.setVolume(getValue("volume", voiceValueDefaults.volume));
+    instrument.setVibratoRate(getValue("vibratoRate", voiceValueDefaults.vibratoRate));
+    instrument.setVibratoDepth(getValue("vibratoDepth", voiceValueDefaults.vibratoDepth));
     instrument.setHarmonicsGamma(getValue("harmonicsGamma", voiceValueDefaults.harmonicsGamma));
     instrument.setEvenHarmonicsScale(getValue("evenHarmonicsScale", voiceValueDefaults.evenHarmonicsScale));
     instrument.setPitchBend(getValue("pitchBend", voiceValueDefaults.pitchBend));
@@ -735,6 +772,8 @@ function VoicePanel({
     const harmonicsGammaControl = useRangedControl(`${voice.id}:harmonicsGamma`, 0.5, `${voice.id}:harmonicsGammaMin`, 0.1, `${voice.id}:harmonicsGammaMax`, 1);
     const evenHarmonicsScaleControl = useRangedControl(`${voice.id}:evenHarmonicsScale`, 0.5, `${voice.id}:evenHarmonicsScaleMin`, 0, `${voice.id}:evenHarmonicsScaleMax`, 1);
     const pitchBendControl = useRangedControl(`${voice.id}:pitchBend`, 0, `${voice.id}:pitchBendMin`, -2, `${voice.id}:pitchBendMax`, 2);
+    const vibratoRateControl = useRangedControl(`${voice.id}:vibratoRate`, voiceValueDefaults.vibratoRate, `${voice.id}:vibratoRateMin`, voiceValueDefaults.vibratoRateMin, `${voice.id}:vibratoRateMax`, voiceValueDefaults.vibratoRateMax);
+    const vibratoDepthControl = useRangedControl(`${voice.id}:vibratoDepth`, voiceValueDefaults.vibratoDepth, `${voice.id}:vibratoDepthMin`, voiceValueDefaults.vibratoDepthMin, `${voice.id}:vibratoDepthMax`, voiceValueDefaults.vibratoDepthMax);
     const enabledControl = useRangedControl(`${voice.id}:enabled`, 1, `${voice.id}:enabledMin`, 0, `${voice.id}:enabledMax`, 1);
     const noteMinControl = useRangedControl(`${voice.id}:noteMin`, 0, `${voice.id}:noteMinMin`, 0, `${voice.id}:noteMinMax`, 127);
     const noteMaxControl = useRangedControl(`${voice.id}:noteMax`, 127, `${voice.id}:noteMaxMin`, 0, `${voice.id}:noteMaxMax`, 127);
@@ -820,6 +859,20 @@ function VoicePanel({
         }
         instrument.setPitchBend(pitchBendControl.current);
     }, [pitchBendControl.current, instrument]);
+
+    useEffect(() => {
+        if (!instrument) {
+            return;
+        }
+        instrument.setVibratoRate(vibratoRateControl.current);
+    }, [vibratoRateControl.current, instrument]);
+
+    useEffect(() => {
+        if (!instrument) {
+            return;
+        }
+        instrument.setVibratoDepth(vibratoDepthControl.current);
+    }, [vibratoDepthControl.current, instrument]);
 
     useEffect(() => {
         if (!instrument) {
@@ -1034,7 +1087,9 @@ function VoicePanel({
             ["volume", volumeControl],
             ["harmonicsGamma", harmonicsGammaControl],
             ["evenHarmonicsScale", evenHarmonicsScaleControl],
-            ["pitchBend", pitchBendControl]
+            ["pitchBend", pitchBendControl],
+            ["vibratoRate", vibratoRateControl],
+            ["vibratoDepth", vibratoDepthControl]
         ];
 
         const cleanups = controlIds.map(([key, control]) => {
@@ -1102,6 +1157,12 @@ function VoicePanel({
         pitchBendControl.set,
         pitchBendControl.min,
         pitchBendControl.max,
+        vibratoRateControl.set,
+        vibratoRateControl.min,
+        vibratoRateControl.max,
+        vibratoDepthControl.set,
+        vibratoDepthControl.min,
+        vibratoDepthControl.max,
         noteMinControl.set,
         noteMaxControl.set,
         noteMinEnabled.set,
@@ -1463,6 +1524,42 @@ function VoicePanel({
                             isMidiLearning={learningControlId === makeVoiceControlId(voice.id, "pitchBend")}
                             midiMapping={ccMappings[makeVoiceControlId(voice.id, "pitchBend")]}
                             onMidiClear={() => clearMidiBinding(makeVoiceControlId(voice.id, "pitchBend"))}
+                        />
+                        <SliderControl
+                            label="Vibrato Rate"
+                            value={vibratoRateControl.current}
+                            onChange={vibratoRateControl.set}
+                            min={vibratoRateControl.min.current}
+                            max={vibratoRateControl.max.current}
+                            step={0.1}
+                            numberStep={0.1}
+                            unit=" Hz"
+                            decimals={2}
+                            inputId={`${voice.id}-vibratoRateControl`}
+                            onMinChange={vibratoRateControl.min.set}
+                            onMaxChange={vibratoRateControl.max.set}
+                            onMidiLearn={() => startMidiLearn(makeVoiceControlId(voice.id, "vibratoRate"))}
+                            isMidiLearning={learningControlId === makeVoiceControlId(voice.id, "vibratoRate")}
+                            midiMapping={ccMappings[makeVoiceControlId(voice.id, "vibratoRate")]}
+                            onMidiClear={() => clearMidiBinding(makeVoiceControlId(voice.id, "vibratoRate"))}
+                        />
+                        <SliderControl
+                            label="Vibrato Depth"
+                            value={vibratoDepthControl.current}
+                            onChange={vibratoDepthControl.set}
+                            min={vibratoDepthControl.min.current}
+                            max={vibratoDepthControl.max.current}
+                            step={1}
+                            numberStep={1}
+                            unit=" cents"
+                            decimals={0}
+                            inputId={`${voice.id}-vibratoDepthControl`}
+                            onMinChange={vibratoDepthControl.min.set}
+                            onMaxChange={vibratoDepthControl.max.set}
+                            onMidiLearn={() => startMidiLearn(makeVoiceControlId(voice.id, "vibratoDepth"))}
+                            isMidiLearning={learningControlId === makeVoiceControlId(voice.id, "vibratoDepth")}
+                            midiMapping={ccMappings[makeVoiceControlId(voice.id, "vibratoDepth")]}
+                            onMidiClear={() => clearMidiBinding(makeVoiceControlId(voice.id, "vibratoDepth"))}
                         />
                         <div className="mb-3">
                             <canvas
