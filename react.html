@@ -280,6 +280,9 @@ class VoiceInstrument {
                     existing.osc.stop();
                     existing.osc.disconnect();
                     existing.gainNode.disconnect();
+                    if (existing === this.noteOscs[note]) {
+                        delete this.noteOscs[note];
+                    }
                 }
             }, this.envelope.release * 1000 + 100);
         }
@@ -289,8 +292,23 @@ class VoiceInstrument {
         Object.keys(this.noteOscs).forEach((note) => this.stopNote(Number(note)));
     }
 
+    stopAllNotesImmediate() {
+        Object.entries(this.noteOscs).forEach(([note, existing]) => {
+            try {
+                existing.gainNode.gain.cancelScheduledValues(audioCtx.currentTime);
+                existing.gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+                existing.osc.stop();
+            } catch (err) {
+                // Ignore node stop errors during shutdown.
+            }
+            existing.osc.disconnect();
+            existing.gainNode.disconnect();
+            delete this.noteOscs[note];
+        });
+    }
+
     dispose() {
-        this.stopAllNotes();
+        this.stopAllNotesImmediate();
         this.voiceGain.disconnect();
     }
 }
@@ -307,6 +325,72 @@ const getStoredNumber = (key, fallbackValue) => {
 };
 
 const createVoiceId = () => `voice-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+const createConfigId = () => `config-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+
+const voiceValueDefaults = {
+    attack: 0.01,
+    attackMin: 0.001,
+    attackMax: 1,
+    decay: 0.2,
+    decayMin: 0.001,
+    decayMax: 2,
+    sustain: 0.7,
+    sustainMin: 0,
+    sustainMax: 1,
+    release: 0.5,
+    releaseMin: 0.001,
+    releaseMax: 2,
+    volume: 0.7,
+    volumeMin: 0,
+    volumeMax: 1,
+    harmonicsGamma: 0.5,
+    harmonicsGammaMin: 0.1,
+    harmonicsGammaMax: 1,
+    evenHarmonicsScale: 0.5,
+    evenHarmonicsScaleMin: 0,
+    evenHarmonicsScaleMax: 1,
+    pitchBend: 0,
+    pitchBendMin: -2,
+    pitchBendMax: 2,
+    noteMin: 0,
+    noteMinMin: 0,
+    noteMinMax: 127,
+    noteMax: 127,
+    noteMaxMin: 0,
+    noteMaxMax: 127,
+    noteMinEnabled: 1,
+    noteMaxEnabled: 1
+};
+
+const masterValueDefaults = {
+    masterVolume: 0.8,
+    masterVolumeMin: 0,
+    masterVolumeMax: 1,
+    reverbMix: 0.3,
+    reverbMixMin: 0,
+    reverbMixMax: 1,
+    reverbTime: 2,
+    reverbTimeMin: 0.1,
+    reverbTimeMax: 6,
+    reverbDecay: 2,
+    reverbDecayMin: 0.5,
+    reverbDecayMax: 6
+};
+
+const applyVoiceSettingsFromStorage = (voiceId, instrument) => {
+    if (!instrument) {
+        return;
+    }
+    const getValue = (key, fallback) => getStoredNumber(`${voiceId}:${key}`, fallback);
+    instrument.setAttack(getValue("attack", voiceValueDefaults.attack));
+    instrument.setDecay(getValue("decay", voiceValueDefaults.decay));
+    instrument.setSustain(getValue("sustain", voiceValueDefaults.sustain));
+    instrument.setRelease(getValue("release", voiceValueDefaults.release));
+    instrument.setVolume(getValue("volume", voiceValueDefaults.volume));
+    instrument.setHarmonicsGamma(getValue("harmonicsGamma", voiceValueDefaults.harmonicsGamma));
+    instrument.setEvenHarmonicsScale(getValue("evenHarmonicsScale", voiceValueDefaults.evenHarmonicsScale));
+    instrument.setPitchBend(getValue("pitchBend", voiceValueDefaults.pitchBend));
+};
 
 const ensureVoiceShape = (voice, index) => {
     const id = voice && voice.id ? voice.id : createVoiceId();
@@ -1144,6 +1228,11 @@ function App() {
     const [ccMappings, setCcMappings] = useState(() => JSON.parse(localStorage.getItem('ccMappings')) || {});
     const [learnStatus, setLearnStatus] = useState("");
     const [voices, setVoices, voicesRef] = useStateWithRef(loadStoredVoices);
+    const [savedConfigs, setSavedConfigs] = useState(() => JSON.parse(localStorage.getItem("savedConfigs")) || []);
+    const [configName, setConfigName] = useState("");
+    const [configVersion, setConfigVersion] = useState(0);
+    const [editingConfigId, setEditingConfigId] = useState(null);
+    const [editingConfigName, setEditingConfigName] = useState("");
     const [isRecording, setIsRecording, isRecordingRef] = useStateWithRef(false);
     const [recordingTime, setRecordingTime] = useState(0);
     const [recordedChunks, setRecordedChunks] = useState([]);
@@ -1160,6 +1249,7 @@ function App() {
     const spectrogramAnimationRef = useRef(null);
     const voiceInstancesRef = useRef(new Map());
     const ccTargetsRef = useRef({});
+    const [instrumentVersion, setInstrumentVersion] = useState(0);
     const noteRangeTargetsRef = useRef({});
     const [noteLearnTarget, setNoteLearnTarget] = useState(null);
     const noteLearnTargetRef = useRef(null);
@@ -1694,6 +1784,10 @@ function App() {
   }, [ccMappings]);
 
   useEffect(() => {
+      localStorage.setItem("savedConfigs", JSON.stringify(savedConfigs));
+  }, [savedConfigs]);
+
+  useEffect(() => {
       learningControlIdRef.current = learningControlId;
   }, [learningControlId]);
 
@@ -1704,10 +1798,14 @@ function App() {
   useEffect(() => {
       const map = voiceInstancesRef.current;
       const nextIds = new Set(voices.map((voice) => voice.id));
+      let hasChanges = false;
 
       voices.forEach((voice) => {
           if (!map.has(voice.id)) {
-              map.set(voice.id, new VoiceInstrument(masterBus));
+              const instrument = new VoiceInstrument(masterBus);
+              applyVoiceSettingsFromStorage(voice.id, instrument);
+              map.set(voice.id, instrument);
+              hasChanges = true;
           }
       });
 
@@ -1715,7 +1813,12 @@ function App() {
           if (!nextIds.has(id)) {
               instrument.dispose();
               map.delete(id);
+              hasChanges = true;
           }
+      }
+
+      if (hasChanges) {
+          setInstrumentVersion((prev) => prev + 1);
       }
   }, [voices]);
 
@@ -1739,6 +1842,176 @@ function App() {
       setVoices((prev) => prev.map((voice) => (
           voice.id === voiceId ? { ...voice, name } : voice
       )));
+  };
+
+  const snapshotVoiceValues = (voiceId) => {
+      const values = {};
+      Object.entries(voiceValueDefaults).forEach(([key, fallback]) => {
+          values[key] = getStoredNumber(`${voiceId}:${key}`, fallback);
+      });
+      return values;
+  };
+
+  const snapshotMasterValues = () => {
+      const values = {};
+      Object.entries(masterValueDefaults).forEach(([key, fallback]) => {
+          values[key] = getStoredNumber(key, fallback);
+      });
+      return values;
+  };
+
+  const createConfigSnapshot = () => {
+      const currentVoices = voicesRef.current.map((voice, index) => ensureVoiceShape(voice, index));
+      const voiceControls = {};
+      currentVoices.forEach((voice) => {
+          voiceControls[voice.id] = snapshotVoiceValues(voice.id);
+      });
+
+      return {
+          id: createConfigId(),
+          name: configName.trim() || "Untitled Config",
+          createdAt: new Date().toISOString(),
+          voices: currentVoices,
+          master: snapshotMasterValues(),
+          voiceControls,
+          ccMappings: ccMappingsRef.current
+      };
+  };
+
+  const applyMasterConfig = (master) => {
+      if (!master) {
+          return;
+      }
+      const nextMaster = { ...masterValueDefaults, ...master };
+      masterVolumeControl.min.set(nextMaster.masterVolumeMin);
+      masterVolumeControl.max.set(nextMaster.masterVolumeMax);
+      masterVolumeControl.set(nextMaster.masterVolume);
+
+      reverbMixControl.min.set(nextMaster.reverbMixMin);
+      reverbMixControl.max.set(nextMaster.reverbMixMax);
+      reverbMixControl.set(nextMaster.reverbMix);
+
+      reverbTimeControl.min.set(nextMaster.reverbTimeMin);
+      reverbTimeControl.max.set(nextMaster.reverbTimeMax);
+      reverbTimeControl.set(nextMaster.reverbTime);
+
+      reverbDecayControl.min.set(nextMaster.reverbDecayMin);
+      reverbDecayControl.max.set(nextMaster.reverbDecayMax);
+      reverbDecayControl.set(nextMaster.reverbDecay);
+
+      masterBus.masterGain.gain.setValueAtTime(nextMaster.masterVolume ** 2, audioCtx.currentTime);
+      masterBus.wetGain.gain.setValueAtTime(nextMaster.reverbMix, audioCtx.currentTime);
+      masterBus.dryGain.gain.setValueAtTime(1.0 - nextMaster.reverbMix, audioCtx.currentTime);
+      masterBus.convolver.buffer = createReverbImpulse(nextMaster.reverbTime, nextMaster.reverbDecay);
+  };
+
+  const applyConfig = (config) => {
+      if (!config || !Array.isArray(config.voices)) {
+          alert("Invalid config file");
+          return;
+      }
+      voiceInstancesRef.current.forEach((instrument) => {
+          instrument.stopAllNotesImmediate();
+          instrument.dispose();
+      });
+      voiceInstancesRef.current.clear();
+      const nextVoices = config.voices.map((voice, index) => ensureVoiceShape(voice, index));
+      const voiceControls = config.voiceControls || {};
+
+      nextVoices.forEach((voice) => {
+          const values = voiceControls[voice.id] || {};
+          Object.entries(voiceValueDefaults).forEach(([key, fallback]) => {
+              const value = values.hasOwnProperty(key) ? values[key] : fallback;
+              localStorage.setItem(`${voice.id}:${key}`, value);
+          });
+      });
+
+      applyMasterConfig(config.master);
+      setCcMappings(config.ccMappings || {});
+      setVoices(nextVoices);
+      setConfigName(config.name || "");
+      setConfigVersion((prev) => prev + 1);
+  };
+
+  const handleSaveConfig = () => {
+      const snapshot = createConfigSnapshot();
+      setSavedConfigs((prev) => [snapshot, ...prev]);
+      setConfigName("");
+  };
+
+  const handleRenameConfig = (configId, name) => {
+      setSavedConfigs((prev) => prev.map((config) => (
+          config.id === configId ? { ...config, name } : config
+      )));
+  };
+
+  const startConfigEdit = (config) => {
+      setEditingConfigId(config.id);
+      setEditingConfigName(config.name || "");
+  };
+
+  const cancelConfigEdit = () => {
+      setEditingConfigId(null);
+      setEditingConfigName("");
+  };
+
+  const saveConfigEdit = (configId) => {
+      handleRenameConfig(configId, editingConfigName.trim() || "Untitled Config");
+      cancelConfigEdit();
+  };
+
+  const handleDeleteConfig = (configId) => {
+      const target = savedConfigs.find((config) => config.id === configId);
+      if (!target) {
+          return;
+      }
+      if (window.confirm(`Delete config "${target.name}"?`)) {
+          setSavedConfigs((prev) => prev.filter((config) => config.id !== configId));
+      }
+  };
+
+  const handleExportConfig = (config) => {
+      const createdAt = new Date(config.createdAt || Date.now());
+      const dateStamp = `${createdAt.getFullYear()}-${String(createdAt.getMonth() + 1).padStart(2, "0")}-${String(createdAt.getDate()).padStart(2, "0")}_${String(createdAt.getHours()).padStart(2, "0")}-${String(createdAt.getMinutes()).padStart(2, "0")}-${String(createdAt.getSeconds()).padStart(2, "0")}`;
+      const blob = new Blob([JSON.stringify(config, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${(config.name || "config").replace(/[^a-z0-9-_ ]/gi, "").trim() || "config"}-${dateStamp}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+  };
+
+  const handleExportAllConfigs = () => {
+      savedConfigs.forEach((config, index) => {
+          setTimeout(() => handleExportConfig(config), index * 120);
+      });
+  };
+
+  const handleImportConfig = (file) => {
+      if (!file) {
+          return;
+      }
+      const reader = new FileReader();
+      reader.onload = (e) => {
+          try {
+              const parsed = JSON.parse(e.target.result);
+              if (!parsed || !Array.isArray(parsed.voices)) {
+                  alert("Invalid config file");
+                  return;
+              }
+              const imported = {
+                  ...parsed,
+                  id: createConfigId(),
+                  name: parsed.name || file.name.replace(/\.json$/i, "") || "Imported Config",
+                  createdAt: parsed.createdAt || new Date().toISOString()
+              };
+              setSavedConfigs((prev) => [imported, ...prev]);
+          } catch (err) {
+              alert("Error importing config: " + err.message);
+          }
+      };
+      reader.readAsText(file);
   };
 
   const startNoteLearn = (voiceId, kind) => {
@@ -1797,6 +2070,117 @@ function App() {
                     📁 Load MIDI
                     <input type="file" accept=".json" onChange={(e) => e.target.files[0] && loadMidiRecording(e.target.files[0])} style={{display: 'none'}} />
                 </label>**/}
+            </div>
+        </div>
+
+        <div className="card mb-3">
+            <div className="card-body">
+                <div className="d-flex align-items-center justify-content-between mb-3">
+                      <div className="d-flex align-items-center">
+                        <input
+                            className="form-control form-control-sm mr-2"
+                            style={{ maxWidth: "220px" }}
+                            placeholder="Config name"
+                            value={configName}
+                            onChange={(e) => setConfigName(e.target.value)}
+                        />
+                            <button
+                                className="btn btn-sm btn-outline-primary"
+                                style={{ minWidth: "190px" }}
+                                onClick={handleSaveConfig}
+                            >
+                            Save Current Config
+                        </button>
+                    </div>
+                        <div className="d-flex align-items-center gap-2">
+                            <button
+                                className="btn btn-sm btn-outline-secondary"
+                                onClick={handleExportAllConfigs}
+                                disabled={savedConfigs.length === 0}
+                            >
+                                Save All Configs
+                            </button>
+                            <label className="btn btn-sm btn-outline-secondary mb-0">
+                                Import Config
+                                <input
+                                    type="file"
+                                    accept="application/json,.json"
+                                    onChange={(e) => handleImportConfig(e.target.files[0])}
+                                    style={{ display: "none" }}
+                                />
+                            </label>
+                        </div>
+                </div>
+                {savedConfigs.length === 0 ? (
+                    <div className="text-muted small">No saved configs yet.</div>
+                ) : (
+                    <div className="list-group">
+                        {savedConfigs.map((config) => (
+                            <div key={config.id} className="list-group-item d-flex align-items-center justify-content-between">
+                                <div>
+                                        <div className="d-flex align-items-center">
+                                            <input
+                                                className="form-control form-control-sm mr-2"
+                                                style={{ maxWidth: "260px" }}
+                                                value={editingConfigId === config.id ? editingConfigName : config.name}
+                                                onChange={(e) => setEditingConfigName(e.target.value)}
+                                                readOnly={editingConfigId !== config.id}
+                                            />
+                                            {editingConfigId === config.id ? (
+                                                <>
+                                                    <button
+                                                        className="btn btn-sm btn-outline-success mr-1"
+                                                        onClick={() => saveConfigEdit(config.id)}
+                                                        title="Save"
+                                                    >
+                                                        ✅
+                                                    </button>
+                                                    <button
+                                                        className="btn btn-sm btn-outline-secondary mr-2"
+                                                        onClick={cancelConfigEdit}
+                                                        title="Cancel"
+                                                    >
+                                                        ❌
+                                                    </button>
+                                                </>
+                                            ) : (
+                                                <button
+                                                    className="btn btn-sm btn-outline-secondary mr-2"
+                                                    onClick={() => startConfigEdit(config)}
+                                                    title="Edit name"
+                                                >
+                                                    ✏️
+                                                </button>
+                                            )}
+                                            <span className="text-muted small" style={{ whiteSpace: "nowrap" }}>
+                                                {new Date(config.createdAt).toLocaleString(undefined, { hour12: false })}
+                                            </span>
+                                        </div>
+                                </div>
+                                <div className="d-flex gap-2">
+                                    <button
+                                        className="btn btn-sm btn-outline-success"
+                                        onClick={() => applyConfig(config)}
+                                    >
+                                        Load
+                                    </button>
+                                    <button
+                                        className="btn btn-sm btn-outline-secondary"
+                                        onClick={() => handleExportConfig(config)}
+                                    >
+                                        Export
+                                    </button>
+                                    <button
+                                        className="btn btn-sm btn-outline-danger"
+                                        onClick={() => handleDeleteConfig(config.id)}
+                                    >
+                                        Delete
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
             </div>
         </div>
 
@@ -1915,7 +2299,7 @@ function App() {
 
         {voices.map((voice) => (
             <VoicePanel
-                key={voice.id}
+            key={`${voice.id}-${configVersion}`}
                 voice={voice}
                 instrument={voiceInstancesRef.current.get(voice.id)}
                 midiInputs={midiInputs}
