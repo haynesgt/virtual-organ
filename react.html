@@ -757,6 +757,7 @@ function VoicePanel({
     ccMappings,
     onRename,
     onRemove,
+    onClone,
     noteLearnTarget,
     startNoteLearn,
     stopNoteLearn
@@ -1216,6 +1217,11 @@ function VoicePanel({
                     {onRemove && (
                         <button className="btn btn-sm btn-outline-danger" onClick={() => onRemove(voice.id)}>
                             Remove
+                        </button>
+                    )}
+                    {onClone && (
+                        <button className="btn btn-sm btn-outline-primary" onClick={() => onClone(voice.id)}>
+                            Clone
                         </button>
                     )}
                 </div>
@@ -2290,6 +2296,26 @@ function App() {
       )));
   };
 
+  const cloneVoice = (voiceId) => {
+      const source = voicesRef.current.find((voice) => voice.id === voiceId);
+      if (!source) {
+          return;
+      }
+      const nextId = createVoiceId();
+      const clone = {
+          id: nextId,
+          name: `${source.name} Copy`,
+          selectedInputIds: [...(source.selectedInputIds || [])]
+      };
+
+      Object.entries(voiceValueDefaults).forEach(([key, fallback]) => {
+          const value = getStoredNumber(`${source.id}:${key}`, fallback);
+          localStorage.setItem(`${nextId}:${key}`, value);
+      });
+
+      setVoices((prev) => [...prev, clone]);
+  };
+
   const snapshotVoiceValues = (voiceId) => {
       const values = {};
       Object.entries(voiceValueDefaults).forEach(([key, fallback]) => {
@@ -2769,6 +2795,7 @@ function App() {
                 ccMappings={ccMappings}
                 onRename={renameVoice}
                 onRemove={removeVoice}
+                onClone={cloneVoice}
                 noteLearnTarget={noteLearnTarget}
                 startNoteLearn={startNoteLearn}
                 stopNoteLearn={stopNoteLearn}
