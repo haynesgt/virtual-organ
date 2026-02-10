@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+f<!DOCTYPE html>
 <html lang="en-US">
 <!-- Simple index.html with in-browser jsx compilation -->
 <head>
@@ -120,7 +120,7 @@ function createCompressor() {
 const compressor = createCompressor();
 const recordingDestination = audioCtx.createMediaStreamDestination();
 const analyser = audioCtx.createAnalyser();
-analyser.fftSize = 4096;
+analyser.fftSize = 8192; // Higher FFT size for better frequency resolution
 analyser.smoothingTimeConstant = 0;
 compressor.connect(recordingDestination);
 compressor.connect(analyser);
@@ -1273,6 +1273,7 @@ function App() {
       if (!canvas) {
           return;
       }
+      /** @type {CanvasRenderingContext2D} */
       const ctx = canvas.getContext("2d");
       const width = canvas.width;
       const height = canvas.height;
@@ -1291,23 +1292,35 @@ function App() {
       const renderFrame = () => {
           analyser.getByteFrequencyData(dataArray);
 
-          // Shift existing image left by 1px
-          ctx.drawImage(canvas, -1, 0);
+          // squish existing image left by .5%
+          ctx.drawImage(canvas, 0, 0, width , height, 0, 0, width * 0.995, height);
 
-          // Draw the new frequency column on the right
+          const columnMax = new Float32Array(height);
           for (let i = 0; i < bufferLength; i++) {
               const freq = (i / bufferLength) * nyquist;
               if (freq < minFreq || freq > maxFreq) {
                   continue;
               }
-              const value = dataArray[i] / 255;
               const logFreq = Math.log2(freq);
               const t = (logFreq - logMin) / (logMax - logMin);
-              const y = height - Math.round(t * height);
+              const y = Math.max(0, Math.min(height - 1, height - 1 - Math.round(t * (height - 1))));
+              const value = dataArray[i] / 255;
+              if (value > columnMax[y]) {
+                  columnMax[y] = value;
+              }
+          }
+
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(width - 1, 0, 1, height);
+          for (let y = 0; y < height; y++) {
+              const value = columnMax[y];
+              if (value === 0) {
+                  continue;
+              }
               const hue = 220 - value * 220;
               const light = 85 - value * 55;
               ctx.fillStyle = `hsl(${hue}, 90%, ${light}%)`;
-              ctx.fillRect(width - 1, y, 1, Math.max(1, height / bufferLength));
+              ctx.fillRect(width - 1, y, 1, 1);
           }
 
           spectrogramAnimationRef.current = requestAnimationFrame(renderFrame);
