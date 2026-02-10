@@ -554,12 +554,16 @@ function VoicePanel({
     midiAccess,
     onMidiSelection,
     registerCcTarget,
+    registerNoteRangeTarget,
     learningControlId,
     startMidiLearn,
     clearMidiBinding,
     ccMappings,
     onRename,
-    onRemove
+    onRemove,
+    noteLearnTarget,
+    startNoteLearn,
+    stopNoteLearn
 }) {
     const attackControl = useRangedControl(`${voice.id}:attack`, 0.01, `${voice.id}:attackMin`, 0.001, `${voice.id}:attackMax`, 1);
     const decayControl = useRangedControl(`${voice.id}:decay`, 0.2, `${voice.id}:decayMin`, 0.001, `${voice.id}:decayMax`, 2);
@@ -569,6 +573,8 @@ function VoicePanel({
     const harmonicsGammaControl = useRangedControl(`${voice.id}:harmonicsGamma`, 0.5, `${voice.id}:harmonicsGammaMin`, 0.1, `${voice.id}:harmonicsGammaMax`, 1);
     const evenHarmonicsScaleControl = useRangedControl(`${voice.id}:evenHarmonicsScale`, 0.5, `${voice.id}:evenHarmonicsScaleMin`, 0, `${voice.id}:evenHarmonicsScaleMax`, 1);
     const pitchBendControl = useRangedControl(`${voice.id}:pitchBend`, 0, `${voice.id}:pitchBendMin`, -2, `${voice.id}:pitchBendMax`, 2);
+    const noteMinControl = useRangedControl(`${voice.id}:noteMin`, 0, `${voice.id}:noteMinMin`, 0, `${voice.id}:noteMinMax`, 127);
+    const noteMaxControl = useRangedControl(`${voice.id}:noteMax`, 127, `${voice.id}:noteMaxMin`, 0, `${voice.id}:noteMaxMax`, 127);
     const adsrCanvasRef = useRef(null);
     const harmonicsCanvasRef = useRef(null);
     const waveformCanvasRef = useRef(null);
@@ -774,12 +780,23 @@ function VoicePanel({
             });
         });
 
+        const rangeCleanup = registerNoteRangeTarget(voice.id, {
+            minValueRef: noteMinControl,
+            maxValueRef: noteMaxControl,
+            setMin: noteMinControl.set,
+            setMax: noteMaxControl.set
+        });
+
         return () => {
             cleanups.forEach((cleanup) => cleanup && cleanup());
+            if (rangeCleanup) {
+                rangeCleanup();
+            }
         };
     }, [
         voice.id,
         registerCcTarget,
+        registerNoteRangeTarget,
         attackControl.set,
         attackControl.min,
         attackControl.max,
@@ -803,8 +820,13 @@ function VoicePanel({
         evenHarmonicsScaleControl.max,
         pitchBendControl.set,
         pitchBendControl.min,
-        pitchBendControl.max
+        pitchBendControl.max,
+        noteMinControl.set,
+        noteMaxControl.set
     ]);
+
+    const isLearningMin = noteLearnTarget && noteLearnTarget.voiceId === voice.id && noteLearnTarget.kind === "min";
+    const isLearningMax = noteLearnTarget && noteLearnTarget.voiceId === voice.id && noteLearnTarget.kind === "max";
 
     return (
         <div className="card mb-3">
@@ -842,6 +864,51 @@ function VoicePanel({
                             </option>
                         ))}
                     </select>
+                </div>
+
+                <div className="row">
+                    <div className="col-md-6">
+                        <h3 className="h6">Note Range</h3>
+                        <div className="d-flex align-items-center">
+                            <input
+                                type="number"
+                                className="form-control form-control-sm mr-2"
+                                style={{ maxWidth: "120px" }}
+                                min={0}
+                                max={127}
+                                step={1}
+                                value={noteMinControl.current}
+                                onChange={(e) => noteMinControl.set(Number(e.target.value))}
+                            />
+                            <button
+                                className={`btn btn-sm ${isLearningMin ? "btn-warning" : "btn-outline-secondary"}`}
+                                onClick={() => (isLearningMin ? stopNoteLearn() : startNoteLearn(voice.id, "min"))}
+                            >
+                                {isLearningMin ? "Listening..." : "Learn Min"}
+                            </button>
+                        </div>
+                    </div>
+                    <div className="col-md-6">
+                        <h3 className="h6">&nbsp;</h3>
+                        <div className="d-flex align-items-center">
+                            <input
+                                type="number"
+                                className="form-control form-control-sm mr-2"
+                                style={{ maxWidth: "120px" }}
+                                min={0}
+                                max={127}
+                                step={1}
+                                value={noteMaxControl.current}
+                                onChange={(e) => noteMaxControl.set(Number(e.target.value))}
+                            />
+                            <button
+                                className={`btn btn-sm ${isLearningMax ? "btn-warning" : "btn-outline-secondary"}`}
+                                onClick={() => (isLearningMax ? stopNoteLearn() : startNoteLearn(voice.id, "max"))}
+                            >
+                                {isLearningMax ? "Listening..." : "Learn Max"}
+                            </button>
+                        </div>
+                    </div>
                 </div>
 
                 <div className="row">
@@ -1055,11 +1122,21 @@ function App() {
     const spectrogramAnimationRef = useRef(null);
     const voiceInstancesRef = useRef(new Map());
     const ccTargetsRef = useRef({});
+    const noteRangeTargetsRef = useRef({});
+    const [noteLearnTarget, setNoteLearnTarget] = useState(null);
+    const noteLearnTargetRef = useRef(null);
 
     const registerCcTarget = useCallback((controlId, target) => {
         ccTargetsRef.current[controlId] = target;
         return () => {
             delete ccTargetsRef.current[controlId];
+        };
+    }, []);
+
+    const registerNoteRangeTarget = useCallback((voiceId, target) => {
+        noteRangeTargetsRef.current[voiceId] = target;
+        return () => {
+            delete noteRangeTargetsRef.current[voiceId];
         };
     }, []);
 
@@ -1173,14 +1250,43 @@ function App() {
           await audioCtx.resume();
           setIsAudioOn(true);
       }
-      const targetVoices = inputId ? voicesRef.current.filter((voice) => voice.selectedInputIds.includes(inputId)) : voicesRef.current;
+    const targetVoices = inputId ? voicesRef.current.filter((voice) => voice.selectedInputIds.includes(inputId)) : voicesRef.current;
 
       if (command === 0x90 && data2 > 0) {
+          if (noteLearnTargetRef.current) {
+              const { voiceId, kind } = noteLearnTargetRef.current;
+              const targetVoice = voicesRef.current.find((voice) => voice.id === voiceId);
+              if (!inputId || (targetVoice && targetVoice.selectedInputIds.includes(inputId))) {
+                  const rangeTarget = noteRangeTargetsRef.current[voiceId];
+                  if (rangeTarget) {
+                      const minValue = rangeTarget.minValueRef.current;
+                      const maxValue = rangeTarget.maxValueRef.current;
+                      if (kind === "min") {
+                          rangeTarget.setMin(data1);
+                          if (data1 > maxValue) {
+                              rangeTarget.setMax(data1);
+                          }
+                      } else {
+                          rangeTarget.setMax(data1);
+                          if (data1 < minValue) {
+                              rangeTarget.setMin(data1);
+                          }
+                      }
+                  }
+                  setNoteLearnTarget(null);
+              }
+          }
           if (autoStopTimeoutRef.current) {
               clearTimeout(autoStopTimeoutRef.current);
               autoStopTimeoutRef.current = null;
           }
           targetVoices.forEach((voice) => {
+              const rangeTarget = noteRangeTargetsRef.current[voice.id];
+              const minNote = rangeTarget ? Math.min(rangeTarget.minValueRef.current, rangeTarget.maxValueRef.current) : 0;
+              const maxNote = rangeTarget ? Math.max(rangeTarget.minValueRef.current, rangeTarget.maxValueRef.current) : 127;
+              if (data1 < minNote || data1 > maxNote) {
+                  return;
+              }
               const instrument = voiceInstancesRef.current.get(voice.id);
               if (instrument) {
                   instrument.startNote(data1, data2 / 127);
@@ -1541,6 +1647,10 @@ function App() {
   }, [learningControlId]);
 
   useEffect(() => {
+      noteLearnTargetRef.current = noteLearnTarget;
+  }, [noteLearnTarget]);
+
+  useEffect(() => {
       const map = voiceInstancesRef.current;
       const nextIds = new Set(voices.map((voice) => voice.id));
 
@@ -1578,6 +1688,14 @@ function App() {
       setVoices((prev) => prev.map((voice) => (
           voice.id === voiceId ? { ...voice, name } : voice
       )));
+  };
+
+  const startNoteLearn = (voiceId, kind) => {
+      setNoteLearnTarget({ voiceId, kind });
+  };
+
+  const stopNoteLearn = () => {
+      setNoteLearnTarget(null);
   };
 
   return (
@@ -1753,12 +1871,16 @@ function App() {
                 midiAccess={midiAccess}
                 onMidiSelection={handleMidiSelection}
                 registerCcTarget={registerCcTarget}
+                registerNoteRangeTarget={registerNoteRangeTarget}
                 learningControlId={learningControlId}
                 startMidiLearn={startMidiLearn}
                 clearMidiBinding={clearMidiBinding}
                 ccMappings={ccMappings}
                 onRename={renameVoice}
                 onRemove={removeVoice}
+                noteLearnTarget={noteLearnTarget}
+                startNoteLearn={startNoteLearn}
+                stopNoteLearn={stopNoteLearn}
             />
         ))}
 
