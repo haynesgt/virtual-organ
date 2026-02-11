@@ -1716,11 +1716,33 @@ function App() {
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(0, 0, width, height);
 
-      const renderFrame = () => {
-          analyser.getByteFrequencyData(dataArray);
+      const pixelsPerSecond = 10;
+      let lastTime = null;
+      let pixelCarry = 0;
 
-          // squish existing image left by .5%
-          ctx.drawImage(canvas, 0, 0, width , height, 0, 0, width * 0.998, height);
+      const renderFrame = (time) => {
+          if (time === undefined) {
+              time = performance.now();
+          }
+          if (lastTime === null) {
+              lastTime = time;
+          }
+          const deltaSeconds = (time - lastTime) / 1000;
+          lastTime = time;
+          pixelCarry += deltaSeconds * pixelsPerSecond;
+          const shift = Math.floor(pixelCarry);
+          // console.log(`Time: ${time?.toFixed(2)}s, Delta: ${deltaSeconds?.toFixed(3)}s, Pixel Carry: ${pixelCarry?.toFixed(2)}, Shift: ${shift}px`);
+          pixelCarry -= shift;
+          if (shift >= width) {
+              ctx.fillStyle = "#ffffff";
+              ctx.fillRect(0, 0, width, height);
+          } else {
+              // move existing image left by whole pixels (frame-rate independent)
+              ctx.drawImage(canvas, shift, 0, width - shift, height, 0, 0, width * 0.999 ** pixelCarry - shift, height);
+              ctx.fillStyle = "#ffffff";
+              ctx.fillRect(width - shift, 0, shift, height);
+          }
+          analyser.getByteFrequencyData(dataArray);
 
           const columnMax = new Float32Array(height);
           for (let i = 0; i < bufferLength; i++) {
@@ -1737,17 +1759,19 @@ function App() {
               }
           }
 
+          const barWidth = 20;
+          const clearWidth = Math.min(width, Math.max(20, shift));
           ctx.fillStyle = "#ffffff";
-          ctx.fillRect(width - 1, 0, 1, height);
+          ctx.fillRect(width - clearWidth, 0, clearWidth, height);
           for (let y = 0; y < height; y++) {
-              const value = columnMax[y];
+              const value = columnMax[y] ** 2;
               if (value === 0) {
                   continue;
               }
               const hue = 220 - value * 220;
               const light = 85 - value * 55;
               ctx.fillStyle = `hsl(${hue}, 0%, ${light}%)`;
-              ctx.fillRect(width - 10, y, 10 * value, 1);
+              ctx.fillRect(width - barWidth * 2, y, barWidth * (value + 1), 1);
           }
 
           spectrogramAnimationRef.current = requestAnimationFrame(renderFrame);
@@ -2805,8 +2829,8 @@ function App() {
                 <div className="mb-3">
                     <canvas
                         ref={spectrogramCanvasRef}
-                        width="320"
-                        height="140"
+                        width="1024"
+                        height="512"
                         style={{ width: "100%", background: "#fff", borderRadius: "6px" }}
                     />
                 </div>
