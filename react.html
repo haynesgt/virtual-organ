@@ -442,6 +442,9 @@ const voiceValueDefaults = {
     vibratoDepth: 0,
     vibratoDepthMin: 0,
     vibratoDepthMax: 100,
+    enabled: 1,
+    enabledMin: 0,
+    enabledMax: 1,
     noteMin: 0,
     noteMinMin: 0,
     noteMinMax: 127,
@@ -1652,6 +1655,7 @@ function App() {
     const [savedConfigs, setSavedConfigs] = useState(() => JSON.parse(localStorage.getItem("savedConfigs")) || []);
     const [configName, setConfigName] = useState("");
     const [configVersion, setConfigVersion] = useState(0);
+    const [lastLoadedConfigId, setLastLoadedConfigId] = useState(null);
     const [editingConfigId, setEditingConfigId] = useState(null);
     const [editingConfigName, setEditingConfigName] = useState("");
     const [isRecording, setIsRecording, isRecordingRef] = useStateWithRef(false);
@@ -1715,7 +1719,7 @@ function App() {
           analyser.getByteFrequencyData(dataArray);
 
           // squish existing image left by .5%
-          ctx.drawImage(canvas, 0, 0, width , height, 0, 0, width * 0.995, height);
+          ctx.drawImage(canvas, 0, 0, width , height, 0, 0, width * 0.998, height);
 
           const columnMax = new Float32Array(height);
           for (let i = 0; i < bufferLength; i++) {
@@ -1741,8 +1745,8 @@ function App() {
               }
               const hue = 220 - value * 220;
               const light = 85 - value * 55;
-              ctx.fillStyle = `hsl(${hue}, 90%, ${light}%)`;
-              ctx.fillRect(width - 1, y, 1, 1);
+              ctx.fillStyle = `hsl(${hue}, 0%, ${light}%)`;
+              ctx.fillRect(width - 10, y, 10 * value, 1);
           }
 
           spectrogramAnimationRef.current = requestAnimationFrame(renderFrame);
@@ -2301,6 +2305,7 @@ function App() {
       if (!source) {
           return;
       }
+      const sourceIndex = voicesRef.current.findIndex((voice) => voice.id === voiceId);
       const nextId = createVoiceId();
       const clone = {
           id: nextId,
@@ -2313,7 +2318,14 @@ function App() {
           localStorage.setItem(`${nextId}:${key}`, value);
       });
 
-      setVoices((prev) => [...prev, clone]);
+      setVoices((prev) => {
+          if (sourceIndex < 0 || sourceIndex >= prev.length) {
+              return [...prev, clone];
+          }
+          const next = [...prev];
+          next.splice(sourceIndex + 1, 0, clone);
+          return next;
+      });
   };
 
   const snapshotVoiceValues = (voiceId) => {
@@ -2402,6 +2414,7 @@ function App() {
       setCcMappings(config.ccMappings || {});
       setVoices(nextVoices);
       setConfigName(config.name || "");
+      setLastLoadedConfigId(config.id || null);
       setConfigVersion((prev) => prev + 1);
   };
 
@@ -2409,6 +2422,26 @@ function App() {
       const snapshot = createConfigSnapshot();
       setSavedConfigs((prev) => [snapshot, ...prev]);
       setConfigName("");
+  };
+
+  const handleOverwriteConfig = (configId) => {
+      const target = savedConfigs.find((config) => config.id === configId);
+      if (!target) {
+          return;
+      }
+      if (!window.confirm(`Overwrite config "${target.name}" with current settings?`)) {
+          return;
+      }
+      const snapshot = createConfigSnapshot();
+      const updated = {
+          ...snapshot,
+          id: target.id,
+          name: target.name,
+          createdAt: new Date().toISOString()
+      };
+      setSavedConfigs((prev) => prev.map((config) => (
+          config.id === configId ? updated : config
+      )));
   };
 
   const handleRenameConfig = (configId, name) => {
@@ -2588,7 +2621,11 @@ function App() {
                 ) : (
                     <div className="list-group">
                         {savedConfigs.map((config) => (
-                            <div key={config.id} className="list-group-item d-flex align-items-center justify-content-between">
+                            <div
+                                key={config.id}
+                                className="list-group-item d-flex align-items-center justify-content-between"
+                                style={{ backgroundColor: lastLoadedConfigId === config.id ? "#eef1f4" : "" }}
+                            >
                                 <div>
                                         <div className="d-flex align-items-center">
                                             <input
@@ -2635,6 +2672,12 @@ function App() {
                                         onClick={() => applyConfig(config)}
                                     >
                                         Load
+                                    </button>
+                                    <button
+                                        className="btn btn-sm btn-outline-primary"
+                                        onClick={() => handleOverwriteConfig(config.id)}
+                                    >
+                                        Overwrite
                                     </button>
                                     <button
                                         className="btn btn-sm btn-outline-secondary"
