@@ -1,0 +1,90 @@
+<script>
+const SAMPLE_RATE = 48000;
+let ctx, node;
+const PROCESSOR_NAME = "sine-generator-processor";
+
+function sineProcessorFactory() {
+  class SineGeneratorProcessor extends AudioWorkletProcessor {
+    static get parameterDescriptors() {
+      return [
+        { name: "frequency", defaultValue: 440, minValue: 20, maxValue: 20000, automationRate: "a-rate" },
+        { name: "gain", defaultValue: 0.2, minValue: 0, maxValue: 1, automationRate: "a-rate" }
+      ];
+    }
+
+    constructor() {
+      super();
+      this.phase = 0;
+      this.sampleRateHz = sampleRate;
+    }
+
+    process(inputs, outputs, parameters) {
+      const output = outputs[0];
+      const freqParam = parameters.frequency;
+      const gainParam = parameters.gain;
+
+      for (let ch = 0; ch < output.length; ch++) {
+        const channel = output[ch];
+
+        for (let i = 0; i < channel.length; i++) {
+          const frequency = freqParam.length > 1 ? freqParam[i] : freqParam[0];
+          const gain = gainParam.length > 1 ? gainParam[i] : gainParam[0];
+
+          channel[i] = Math.sin(this.phase) * gain;
+          this.phase += (2 * Math.PI * frequency) / this.sampleRateHz;
+
+          if (this.phase >= 2 * Math.PI) this.phase -= 2 * Math.PI;
+        }
+      }
+
+      return true;
+    }
+  }
+
+  return SineGeneratorProcessor;
+}
+
+function buildWorkletSource() {
+  return `${sineProcessorFactory.toString()}\n` +
+    "const SineGeneratorProcessor = sineProcessorFactory();\n" +
+    `registerProcessor(${JSON.stringify(PROCESSOR_NAME)}, SineGeneratorProcessor);\n`;
+}
+
+async function initAudio() {
+  ctx = new AudioContext({ sampleRate: SAMPLE_RATE });
+
+  const workletSource = buildWorkletSource();
+  const workletBlob = new Blob([workletSource], { type: "application/javascript" });
+  const workletUrl = URL.createObjectURL(workletBlob);
+  await ctx.audioWorklet.addModule(workletUrl);
+  URL.revokeObjectURL(workletUrl);
+
+  node = new AudioWorkletNode(ctx, PROCESSOR_NAME, {
+    parameterData: {
+      frequency: 440,
+      gain: 0.2,
+    },
+  });
+  node.connect(ctx.destination);
+
+  // Browsers often require user gesture before audio starts
+  await ctx.resume();
+}
+
+function setFrequency(hz) {
+  if (!node) {
+    return;
+  }
+  node.parameters.get("frequency").setValueAtTime(hz, ctx.currentTime);
+}
+
+function setGain(value) {
+  if (!node) {
+    return;
+  }
+  node.parameters.get("gain").setValueAtTime(value, ctx.currentTime);
+}
+
+initAudio();
+
+</script>
