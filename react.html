@@ -1763,15 +1763,14 @@ function App() {
           const clearWidth = Math.min(width, Math.max(20, shift));
           ctx.fillStyle = "#ffffff";
           ctx.fillRect(width - clearWidth, 0, clearWidth, height);
+          let lastY = 0;
           for (let y = 0; y < height; y++) {
               const value = columnMax[y] ** 2;
-              if (value === 0) {
-                  continue;
-              }
               const hue = 220 - value * 220;
               const light = 85 - value * 55;
               ctx.fillStyle = `hsl(${hue}, 0%, ${light}%)`;
-              ctx.fillRect(width - barWidth * 2, y, barWidth * (value + 1), 1);
+              ctx.fillRect(width - barWidth * 2, lastY + 1, barWidth * (value + 1), y - lastY);
+              lastY = y;
           }
 
           spectrogramAnimationRef.current = requestAnimationFrame(renderFrame);
