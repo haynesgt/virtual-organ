@@ -693,7 +693,7 @@ function SliderControl({
                             style={{ width: "90px" }}
                             min={Number.MIN_SAFE_INTEGER}
                             max={max}
-                            step={numberStep || step}
+                            step="any"
                             value={minInput}
                             onChange={handleMinChange}
                             onFocus={() => setActiveField("min")}
@@ -708,7 +708,7 @@ function SliderControl({
                             style={{ width: "90px" }}
                             min={min}
                             max={Number.MAX_SAFE_INTEGER}
-                            step={numberStep || step}
+                            step="any"
                             value={maxInput}
                             onChange={handleMaxChange}
                             onFocus={() => setActiveField("max")}
@@ -724,7 +724,7 @@ function SliderControl({
                         style={{ width: "110px" }}
                         min={min}
                         max={max}
-                        step={numberStep || step}
+                        step="any"
                         value={valueInput}
                         onChange={handleNumberChange}
                         onFocus={() => setActiveField("value")}
@@ -737,7 +737,7 @@ function SliderControl({
                 type="range"
                 min={min}
                 max={max}
-                step={step}
+                step="any"
                 value={value}
                 onChange={(e) => onChange(Number(e.target.value))}
                 className="form-control-range"
@@ -1258,7 +1258,7 @@ function VoicePanel({
                                 style={{ maxWidth: "120px" }}
                                 min={0}
                                 max={127}
-                                step={1}
+                                step="any"
                                 value={noteMinControl.current}
                                 onChange={(e) => noteMinControl.set(Number(e.target.value))}
                                 disabled={!noteMinEnabled.current}
@@ -1294,7 +1294,7 @@ function VoicePanel({
                                 style={{ maxWidth: "120px" }}
                                 min={0}
                                 max={127}
-                                step={1}
+                                step="any"
                                 value={noteMaxControl.current}
                                 onChange={(e) => noteMaxControl.set(Number(e.target.value))}
                                 disabled={!noteMaxEnabled.current}
@@ -1613,7 +1613,7 @@ function VoiceSummaryRow({ voice, enabledControl, volumeControl }) {
                     type="range"
                     min={volumeControl.min.current}
                     max={volumeControl.max.current}
-                    step={0.01}
+                    step="any"
                     value={volumeControl.current}
                     onChange={(e) => volumeControl.set(Number(e.target.value))}
                     style={{ width: "140px" }}

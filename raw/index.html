@@ -50,9 +50,9 @@ function buildWorkletSource() {
     `registerProcessor(${JSON.stringify(PROCESSOR_NAME)}, SineGeneratorProcessor);\n`;
 }
 
-async function initAudio() {
-  ctx = new AudioContext({ sampleRate: SAMPLE_RATE });
+ctx = new AudioContext({ sampleRate: SAMPLE_RATE });
 
+async function initAudio() {
   const workletSource = buildWorkletSource();
   const workletBlob = new Blob([workletSource], { type: "application/javascript" });
   const workletUrl = URL.createObjectURL(workletBlob);
@@ -61,7 +61,7 @@ async function initAudio() {
 
   node = new AudioWorkletNode(ctx, PROCESSOR_NAME, {
     parameterData: {
-      frequency: 440,
+      frequency: 220,
       gain: 0.2,
     },
   });
@@ -85,6 +85,8 @@ function setGain(value) {
   node.parameters.get("gain").setValueAtTime(value, ctx.currentTime);
 }
 
-initAudio();
+
 
 </script>
+
+<button style="position:absolute; width: 50%; height: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%);" onclick="initAudio(); this.remove();">Start Audio</button>
