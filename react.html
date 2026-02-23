@@ -471,20 +471,66 @@ const masterValueDefaults = {
     reverbDecayMax: 6
 };
 
+const buildAdaptiveRampNodes = (from, to, curve, minNodes = 8, maxNodes = 64) => {
+    const delta = to - from;
+    const fn = (t) => from + delta * Math.pow(t, curve);
+    const tolerance = Math.max(0.0005, Math.abs(delta) * 0.002);
+    const nodeSet = new Set([0, 1]);
+
+    const subdivide = (startT, endT, depth = 0) => {
+        if (nodeSet.size >= maxNodes || depth >= 10) {
+            return;
+        }
+
+        const midT = (startT + endT) / 2;
+        const startV = fn(startT);
+        const endV = fn(endT);
+        const midV = fn(midT);
+        const linearMid = (startV + endV) / 2;
+
+        if (Math.abs(midV - linearMid) > tolerance) {
+            nodeSet.add(midT);
+            subdivide(startT, midT, depth + 1);
+            subdivide(midT, endT, depth + 1);
+        }
+    };
+
+    subdivide(0, 1);
+
+    if (nodeSet.size < minNodes) {
+        for (let i = 0; i < minNodes; i++) {
+            nodeSet.add(i / (minNodes - 1));
+        }
+    }
+
+    return Array.from(nodeSet)
+        .sort((a, b) => a - b)
+        .slice(0, maxNodes)
+        .map((t) => ({ t, value: fn(t) }));
+};
+
 const applyExponentialRamp = (param, fromValue, toValue, duration, curve, startTime) => {
-    const steps = 16;
     const time = startTime !== undefined ? startTime : audioCtx.currentTime;
     const clampedCurve = Math.max(0.1, Math.min(curve || 2, 8));
     const from = Math.max(0, fromValue);
     const to = Math.max(0, toValue);
-    const delta = to - from;
+
+    if (!Number.isFinite(duration) || duration <= 0) {
+        param.setValueAtTime(to, time);
+        return;
+    }
+
+    if (from === to) {
+        param.setValueAtTime(from, time);
+        return;
+    }
+
+    const nodes = buildAdaptiveRampNodes(from, to, clampedCurve);
 
     param.setValueAtTime(from, time);
-    for (let i = 1; i <= steps; i++) {
-        const t = i / steps;
-        const shaped = Math.pow(t, clampedCurve);
-        const value = from + delta * shaped;
-        param.linearRampToValueAtTime(value, time + duration * t);
+    for (let i = 1; i < nodes.length; i++) {
+        const node = nodes[i];
+        param.linearRampToValueAtTime(node.value, time + duration * node.t);
     }
 };
 
@@ -916,38 +962,39 @@ function VoicePanel({
         const attackY = height * 0.1;
         const sustainY = height - sustainControl.current * (height * 0.8) - height * 0.1;
         const baseY = height - height * 0.1;
-        const steps = 24;
-
-        const curvePoint = (t, curve) => Math.pow(t, Math.max(0.1, Math.min(curve, 8)));
+        const adaptiveCurveNodes = (curve) => {
+            const clampedCurve = Math.max(0.1, Math.min(curve, 8));
+            return buildAdaptiveRampNodes(0, 1, clampedCurve, 12, 96);
+        };
+        const attackNodes = adaptiveCurveNodes(attackCurveControl.current);
+        const decayNodes = adaptiveCurveNodes(decayCurveControl.current);
+        const releaseNodes = adaptiveCurveNodes(releaseCurveControl.current);
 
         ctx.strokeStyle = "#28a745";
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.moveTo(0, baseY);
 
-        for (let i = 1; i <= steps; i++) {
-            const t = i / steps;
-            const shaped = curvePoint(t, attackCurveControl.current);
-            const x = attackW * t;
-            const y = baseY - (baseY - attackY) * shaped;
+        for (let i = 1; i < attackNodes.length; i++) {
+            const node = attackNodes[i];
+            const x = attackW * node.t;
+            const y = baseY - (baseY - attackY) * node.value;
             ctx.lineTo(x, y);
         }
 
-        for (let i = 1; i <= steps; i++) {
-            const t = i / steps;
-            const shaped = curvePoint(t, decayCurveControl.current);
-            const x = attackW + decayW * t;
-            const y = attackY + (sustainY - attackY) * shaped;
+        for (let i = 1; i < decayNodes.length; i++) {
+            const node = decayNodes[i];
+            const x = attackW + decayW * node.t;
+            const y = attackY + (sustainY - attackY) * node.value;
             ctx.lineTo(x, y);
         }
 
         ctx.lineTo(attackW + decayW + sustainW, sustainY);
 
-        for (let i = 1; i <= steps; i++) {
-            const t = i / steps;
-            const shaped = curvePoint(t, releaseCurveControl.current);
-            const x = attackW + decayW + sustainW + releaseW * t;
-            const y = sustainY + (baseY - sustainY) * shaped;
+        for (let i = 1; i < releaseNodes.length; i++) {
+            const node = releaseNodes[i];
+            const x = attackW + decayW + sustainW + releaseW * node.t;
+            const y = sustainY + (baseY - sustainY) * node.value;
             ctx.lineTo(x, y);
         }
 
@@ -957,29 +1004,26 @@ function VoicePanel({
         ctx.beginPath();
         ctx.moveTo(0, baseY);
 
-        for (let i = 1; i <= steps; i++) {
-            const t = i / steps;
-            const shaped = curvePoint(t, attackCurveControl.current);
-            const x = attackW * t;
-            const y = baseY - (baseY - attackY) * shaped;
+        for (let i = 1; i < attackNodes.length; i++) {
+            const node = attackNodes[i];
+            const x = attackW * node.t;
+            const y = baseY - (baseY - attackY) * node.value;
             ctx.lineTo(x, y);
         }
 
-        for (let i = 1; i <= steps; i++) {
-            const t = i / steps;
-            const shaped = curvePoint(t, decayCurveControl.current);
-            const x = attackW + decayW * t;
-            const y = attackY + (sustainY - attackY) * shaped;
+        for (let i = 1; i < decayNodes.length; i++) {
+            const node = decayNodes[i];
+            const x = attackW + decayW * node.t;
+            const y = attackY + (sustainY - attackY) * node.value;
             ctx.lineTo(x, y);
         }
 
         ctx.lineTo(attackW + decayW + sustainW, sustainY);
 
-        for (let i = 1; i <= steps; i++) {
-            const t = i / steps;
-            const shaped = curvePoint(t, releaseCurveControl.current);
-            const x = attackW + decayW + sustainW + releaseW * t;
-            const y = sustainY + (baseY - sustainY) * shaped;
+        for (let i = 1; i < releaseNodes.length; i++) {
+            const node = releaseNodes[i];
+            const x = attackW + decayW + sustainW + releaseW * node.t;
+            const y = sustainY + (baseY - sustainY) * node.value;
             ctx.lineTo(x, y);
         }
 
