@@ -1870,8 +1870,8 @@ function App() {
       // log hex message
       console.log(`MIDI Message: ${[...event.data].map((b) => "0x" + b.toString(16).padStart(2, '0')).join(' ')} (${status}, ${channel}, ${command})`);
 
-      // Handle CC learning mode
-      if (learningControlIdRef.current) {
+      // Handle CC learning mode (only learn from Control Change messages)
+      if (learningControlIdRef.current && command === 0xb0) {
           const cc = data1;
           const newMapping = { ...ccMappingsRef.current };
           newMapping[learningControlIdRef.current] = { channel, cc };
@@ -1963,13 +1963,15 @@ function App() {
           }
       }
 
-      // Handle CC mapping for sliders
-      const cc = data1;
-      const value = mapCcValue(data2);
-      for (const [controlId, mapping] of Object.entries(ccMappingsRef.current)) {
-          if (mapping.channel === channel && mapping.cc === cc) {
-              console.log(`Mapped CC${cc} on channel ${channel + 1} to ${controlId} with value ${value}`);
-              handleCcValue(controlId, value);
+      // Handle CC mapping for sliders (Control Change only)
+      if (command === 0xb0) {
+          const cc = data1;
+          const value = mapCcValue(data2);
+          for (const [controlId, mapping] of Object.entries(ccMappingsRef.current)) {
+              if (mapping.channel === channel && mapping.cc === cc) {
+                  console.log(`Mapped CC${cc} on channel ${channel + 1} to ${controlId} with value ${value}`);
+                  handleCcValue(controlId, value);
+              }
           }
       }
   };
