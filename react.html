@@ -225,7 +225,7 @@ class VoiceInstrument {
         const oddScale = this.evenHarmonicsScale;
         const imag = new Float32Array(harmonicsCount);
         for (let i = 1; i < imag.length; i++) {
-            const base = Math.pow(gamma, i);
+            const base = gamma == 0 ? i == 1 ? 1 : 0 : Math.pow(gamma, i);
             imag[i] = (i % 2 === 0) ? base * oddScale : base;
         }
         return audioCtx.createPeriodicWave(
@@ -1054,7 +1054,7 @@ function VoicePanel({
         const maxValue = Math.max(1, evenHarmonicsScaleControl.current, harmonicsGammaControl.current);
 
         for (let i = 0; i < harmonicsCount; i++) {
-            const base = Math.pow(harmonicsGammaControl.current, i);
+            const base = harmonicsGammaControl.current == 0 ? i == 0 ? 1 : 0 : Math.pow(harmonicsGammaControl.current, i);
             const value = (i % 2 === 1) ? base * evenHarmonicsScaleControl.current : base;
             const barHeight = (value / maxValue) * (height * 0.9);
             const x = i * barWidth;
@@ -1085,7 +1085,7 @@ function VoicePanel({
             const t = (i / samples) * 2 * Math.PI;
             let sum = 0;
             for (let h = 1; h < harmonicsCount; h++) {
-                const base = Math.pow(harmonicsGammaControl.current, h);
+                const base = harmonicsGammaControl.current == 0 ? h == 1 ? 1 : 0 : Math.pow(harmonicsGammaControl.current, h);
                 const amplitude = (h % 2 === 0) ? base * evenHarmonicsScaleControl.current : base;
                 sum += amplitude * Math.sin(h * t);
             }
