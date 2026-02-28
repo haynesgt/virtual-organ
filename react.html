@@ -169,6 +169,7 @@ class VoiceInstrument {
         this.harmonicsGamma = 0.5;
         this.evenHarmonicsScale = 1.0;
         this.pitchBend = 0; // in semitones
+        this.noteDelay = 0.05;
         this.lfoOsc.type = "sine";
         this.lfoOsc.frequency.value = this.vibratoRate;
         this.lfoGain.gain.value = this.vibratoDepth;
@@ -202,6 +203,10 @@ class VoiceInstrument {
 
     setReleaseCurve(value) {
         this.envelope.releaseCurve = value;
+    }
+
+    setNoteDelay(value) {
+        this.noteDelay = Math.max(0, value);
     }
 
     setVolume(value) {
@@ -280,7 +285,7 @@ class VoiceInstrument {
                     velocity,
                     attack,
                     this.envelope.attackCurve,
-                    audioCtx.currentTime + 0.05
+                    audioCtx.currentTime + this.noteDelay
                 );
                 applyExponentialRamp(
                     existing.gainNode.gain,
@@ -288,7 +293,7 @@ class VoiceInstrument {
                     velocity * this.envelope.sustain,
                     this.envelope.decay,
                     this.envelope.decayCurve,
-                    audioCtx.currentTime + attack + 0.05
+                    audioCtx.currentTime + attack + this.noteDelay
                 );
                 return;
             }
@@ -301,7 +306,8 @@ class VoiceInstrument {
         osc.setPeriodicWave(wave);
         osc.frequency.value = noteFrequency;
 
-        const now = audioCtx.currentTime + 0.01; // slight delay to avoid clicks
+        const now = audioCtx.currentTime + this.noteDelay;
+        gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
         gainNode.gain.setValueAtTime(0, now);
         applyExponentialRamp(
             gainNode.gain,
@@ -331,16 +337,16 @@ class VoiceInstrument {
     stopNote(note) {
         const existing = this.noteOscs[note];
         if (existing) {
-            const now = audioCtx.currentTime;
+            const now = audioCtx.currentTime + this.noteDelay;
             existing.gainNode.gain.cancelScheduledValues(audioCtx.currentTime);
-            existing.gainNode.gain.setValueAtTime(existing.gainNode.gain.value, audioCtx.currentTime);
+            existing.gainNode.gain.linearRampToValueAtTime(existing.gainNode.gain.value, now);
             applyExponentialRamp(
                 existing.gainNode.gain,
                 existing.gainNode.gain.value,
                 0,
                 this.envelope.release,
                 this.envelope.releaseCurve,
-                now + 0.05
+                now
             );
             setTimeout(() => {
                 if (existing.gainNode.gain.value === 0) {
@@ -352,7 +358,7 @@ class VoiceInstrument {
                         delete this.noteOscs[note];
                     }
                 }
-            }, this.envelope.release * 1000 + 100);
+            }, this.envelope.release * 1000 + 100 + this.noteDelay * 1000);
         }
     }
 
@@ -460,6 +466,9 @@ const masterValueDefaults = {
     masterVolume: 0.8,
     masterVolumeMin: 0,
     masterVolumeMax: 1,
+    noteDelay: 0.05,
+    noteDelayMin: 0,
+    noteDelayMax: 0.2,
     reverbMix: 0.3,
     reverbMixMin: 0,
     reverbMixMax: 1,
@@ -1687,6 +1696,7 @@ function App() {
     const [isAudioOn, setIsAudioOn] = useState(audioCtx.state === "running");
     const [enableButtonClicked, setEnableButtonClicked] = useState(false);
     const masterVolumeControl = useRangedControl("masterVolume", 0.8, "masterVolumeMin", 0, "masterVolumeMax", 1);
+    const noteDelayControl = useRangedControl("noteDelay", 0.05, "noteDelayMin", 0, "noteDelayMax", 0.2);
     const reverbMixControl = useRangedControl("reverbMix", 0.3, "reverbMixMin", 0, "reverbMixMax", 1);
     const reverbTimeControl = useRangedControl("reverbTime", 2, "reverbTimeMin", 0.1, "reverbTimeMax", 6);
     const reverbDecayControl = useRangedControl("reverbDecay", 2, "reverbDecayMin", 0.5, "reverbDecayMax", 6);
@@ -2238,6 +2248,11 @@ function App() {
               minRef: masterVolumeControl.min,
               maxRef: masterVolumeControl.max
           }),
+          registerCcTarget(makeMasterControlId("noteDelay"), {
+              setState: noteDelayControl.set,
+              minRef: noteDelayControl.min,
+              maxRef: noteDelayControl.max
+          }),
           registerCcTarget(makeMasterControlId("reverbMix"), {
               setState: reverbMixControl.set,
               minRef: reverbMixControl.min,
@@ -2263,6 +2278,9 @@ function App() {
       masterVolumeControl.set,
       masterVolumeControl.min,
       masterVolumeControl.max,
+    noteDelayControl.set,
+    noteDelayControl.min,
+    noteDelayControl.max,
       reverbMixControl.set,
       reverbMixControl.min,
       reverbMixControl.max,
@@ -2273,6 +2291,12 @@ function App() {
       reverbDecayControl.min,
       reverbDecayControl.max
   ]);
+
+  useEffect(() => {
+      voiceInstancesRef.current.forEach((instrument) => {
+          instrument.setNoteDelay(noteDelayControl.current);
+      });
+  }, [noteDelayControl.current]);
 
   useEffect(() => {
       masterBus.wetGain.gain.setValueAtTime(reverbMixControl.current, audioCtx.currentTime);
@@ -2329,6 +2353,7 @@ function App() {
       voices.forEach((voice) => {
           if (!map.has(voice.id)) {
               const instrument = new VoiceInstrument(masterBus);
+              instrument.setNoteDelay(noteDelayControl.current);
               applyVoiceSettingsFromStorage(voice.id, instrument);
               map.set(voice.id, instrument);
               hasChanges = true;
@@ -2346,7 +2371,7 @@ function App() {
       if (hasChanges) {
           setInstrumentVersion((prev) => prev + 1);
       }
-  }, [voices]);
+    }, [voices, noteDelayControl.current]);
 
   const handleTurnOn = async () => {
       if (audioCtx.state !== "running") {
@@ -2441,6 +2466,10 @@ function App() {
       masterVolumeControl.max.set(nextMaster.masterVolumeMax);
       masterVolumeControl.set(nextMaster.masterVolume);
 
+    noteDelayControl.min.set(nextMaster.noteDelayMin);
+    noteDelayControl.max.set(nextMaster.noteDelayMax);
+    noteDelayControl.set(nextMaster.noteDelay);
+
       reverbMixControl.min.set(nextMaster.reverbMixMin);
       reverbMixControl.max.set(nextMaster.reverbMixMax);
       reverbMixControl.set(nextMaster.reverbMix);
@@ -2457,6 +2486,9 @@ function App() {
       masterBus.wetGain.gain.setValueAtTime(nextMaster.reverbMix, audioCtx.currentTime);
       masterBus.dryGain.gain.setValueAtTime(1.0 - nextMaster.reverbMix, audioCtx.currentTime);
       masterBus.convolver.buffer = createReverbImpulse(nextMaster.reverbTime, nextMaster.reverbDecay);
+      voiceInstancesRef.current.forEach((instrument) => {
+          instrument.setNoteDelay(nextMaster.noteDelay);
+      });
   };
 
   const applyConfig = (config) => {
@@ -2816,6 +2848,24 @@ function App() {
                     isMidiLearning={learningControlId === makeMasterControlId("volume")}
                     midiMapping={ccMappings[makeMasterControlId("volume")]}
                     onMidiClear={() => clearMidiBinding(makeMasterControlId("volume"))}
+                />
+                <SliderControl
+                    label="Note Delay"
+                    value={noteDelayControl.current}
+                    onChange={noteDelayControl.set}
+                    min={noteDelayControl.min.current}
+                    max={noteDelayControl.max.current}
+                    step={0.001}
+                    numberStep={0.001}
+                    unit="s"
+                    decimals={3}
+                    inputId="noteDelayControl"
+                    onMinChange={noteDelayControl.min.set}
+                    onMaxChange={noteDelayControl.max.set}
+                    onMidiLearn={() => startMidiLearn(makeMasterControlId("noteDelay"))}
+                    isMidiLearning={learningControlId === makeMasterControlId("noteDelay")}
+                    midiMapping={ccMappings[makeMasterControlId("noteDelay")]}
+                    onMidiClear={() => clearMidiBinding(makeMasterControlId("noteDelay"))}
                 />
                 <SliderControl
                     label="Reverb Mix"
