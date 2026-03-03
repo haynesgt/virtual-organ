@@ -39,6 +39,37 @@ function mapCcValue(val) {
     return val < 64 ? val / 126 : ((val - 64) / 126 + 0.5);
 }
 
+function mapPitchBendValue(lsb, msb) {
+    const bend14 = ((msb & 0x7f) << 7) | (lsb & 0x7f);
+    return bend14 / 16383;
+}
+
+function isBindableControlCommand(command) {
+    return command === 0xb0 || command === 0xe0;
+}
+
+function getMappedControlValue(mapping, command, data1, data2) {
+    if (!mapping) {
+        return null;
+    }
+    const type = mapping.type || "cc";
+    if (type === "cc" && command === 0xb0 && mapping.cc === data1) {
+        return {
+            kind: "cc",
+            label: `CC${data1}`,
+            value: mapCcValue(data2)
+        };
+    }
+    if (type === "pb" && command === 0xe0) {
+        return {
+            kind: "pb",
+            label: "PB",
+            value: mapPitchBendValue(data1, data2)
+        };
+    }
+    return null;
+}
+
 // Helper hook to create state with matching ref for callback access
 function useStateWithRef(initialValue) {
     const [state, setState] = useState(initialValue);
@@ -733,8 +764,15 @@ function SliderControl({
                         </button>
                     )}
                     {midiMapping && (
-                        <span className="badge badge-info" title={`CC${midiMapping.cc} CH${midiMapping.channel + 1}`}>
-                            CC{midiMapping.cc}
+                        <span
+                            className="badge badge-info"
+                            title={
+                                (midiMapping.type || "cc") === "pb"
+                                    ? `PB CH${midiMapping.channel + 1}`
+                                    : `CC${midiMapping.cc} CH${midiMapping.channel + 1}`
+                            }
+                        >
+                            {(midiMapping.type || "cc") === "pb" ? "PB" : `CC${midiMapping.cc}`}
                         </span>
                     )}
                 </div>
@@ -1880,14 +1918,19 @@ function App() {
       // log hex message
       console.log(`MIDI Message: ${[...event.data].map((b) => "0x" + b.toString(16).padStart(2, '0')).join(' ')} (${status}, ${channel}, ${command})`);
 
-      // Handle CC learning mode (only learn from Control Change messages)
-      if (learningControlIdRef.current && command === 0xb0) {
-          const cc = data1;
+      // Handle learn mode (Control Change or Pitch Bend)
+    if (learningControlIdRef.current && isBindableControlCommand(command)) {
           const newMapping = { ...ccMappingsRef.current };
-          newMapping[learningControlIdRef.current] = { channel, cc };
+          if (command === 0xb0) {
+              const cc = data1;
+              newMapping[learningControlIdRef.current] = { type: "cc", channel, cc };
+              setLearnStatus(`Learned: CC${cc} on channel ${channel + 1}`);
+          } else {
+              newMapping[learningControlIdRef.current] = { type: "pb", channel };
+              setLearnStatus(`Learned: Pitch Bend on channel ${channel + 1}`);
+          }
           setCcMappings(newMapping);
           localStorage.setItem('ccMappings', JSON.stringify(newMapping));
-          setLearnStatus(`Learned: CC${cc} on channel ${channel + 1}`);
           setLearningControlId(null);
           setTimeout(() => setLearnStatus(""), 2000);
           return;
@@ -1973,15 +2016,18 @@ function App() {
           }
       }
 
-      // Handle CC mapping for sliders (Control Change only)
-      if (command === 0xb0) {
-          const cc = data1;
-          const value = mapCcValue(data2);
+      // Handle learned MIDI mappings (CC + Pitch Bend)
+      if (isBindableControlCommand(command)) {
           for (const [controlId, mapping] of Object.entries(ccMappingsRef.current)) {
-              if (mapping.channel === channel && mapping.cc === cc) {
-                  console.log(`Mapped CC${cc} on channel ${channel + 1} to ${controlId} with value ${value}`);
-                  handleCcValue(controlId, value);
+              if (!mapping || mapping.channel !== channel) {
+                  continue;
               }
+              const mapped = getMappedControlValue(mapping, command, data1, data2);
+              if (!mapped) {
+                  continue;
+              }
+              console.log(`Mapped ${mapped.label} on channel ${channel + 1} to ${controlId} with value ${mapped.value}`);
+              handleCcValue(controlId, mapped.value);
           }
       }
   };
@@ -2165,7 +2211,7 @@ function App() {
 
   const startMidiLearn = (controlId) => {
       setLearningControlId(controlId);
-      setLearnStatus(`Learning ${controlId}... Move a MIDI slider`);
+      setLearnStatus(`Learning ${controlId}... Move a MIDI slider or pitch wheel`);
   };
 
   const clearMidiBinding = (controlId) => {
